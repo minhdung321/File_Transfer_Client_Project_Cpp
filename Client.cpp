@@ -561,7 +561,6 @@ public:
 		return true;
 	}
 
-
 	bool downloadFile(const std::string& filename)
 	{
 		// Prepare the download request
