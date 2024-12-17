@@ -510,6 +510,57 @@ public:
 
 		return true;
 	}
+	bool uploadFolder(const std::string& dir_path) {
+		// Kiểm tra thư mục hợp lệ
+		if (!fs::exists(dir_path) || !fs::is_directory(dir_path)) {
+			std::cerr << "Invalid directory path." << std::endl;
+			return false;
+		}
+
+		std::vector<std::string> filesToUpload;
+
+		// Duyệt qua thư mục và lấy danh sách các file
+		for (const auto& entry : fs::recursive_directory_iterator(dir_path)) {
+			if (fs::is_regular_file(entry)) {
+				filesToUpload.push_back(entry.path().string());
+			}
+		}
+
+		// Gửi yêu cầu upload thư mục (chỉ gửi 1 lần)
+		PacketUploadRequest uploadDirRequest(dir_path, "", 0, nullptr);
+		if (!sendPacket(PacketType::UPLOAD_REQUEST, uploadDirRequest)) {
+			std::cerr << "Failed to send upload directory request." << std::endl;
+			return false;
+		}
+
+		// Nhận phản hồi từ server
+		PacketHeader header;
+		PacketUploadResponse uploadResp;
+		if (!recvPacket(PacketType::UPLOAD_RESPONSE, header, uploadResp)) {
+			std::cerr << "Failed to receive upload response." << std::endl;
+			return false;
+		}
+
+		// Kiểm tra phản hồi từ server
+		if (uploadResp.status != UploadStatus::UPLOAD_ALLOWED) {
+			std::cerr << "Server denied the upload." << std::endl;
+			return false;
+		}
+
+		// Upload từng file trong thư mục
+		for (const auto& filePath : filesToUpload) {
+			// Gọi hàm uploadFile cho từng file
+			std::cout << "Uploading file: " << filePath << std::endl;
+			if (!uploadFile(filePath)) {
+				std::cerr << "Failed to upload file: " << filePath << std::endl;
+				return false;
+			}
+		}
+
+		std::cout << "Folder upload completed successfully." << std::endl;
+		return true;
+	}
+
 
 	bool downloadFile(const std::string& filename)
 	{
