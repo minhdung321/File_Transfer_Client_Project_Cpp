@@ -178,7 +178,8 @@ namespace cli
 		{
 			if (state != CLIState::SESSION)
 			{
-				throw std::runtime_error("Invalid state for showing transfer menu");
+				// throw std::runtime_error("Invalid state for showing transfer menu");
+				return 5;
 			}
 
 			system("cls"); // Clear screen

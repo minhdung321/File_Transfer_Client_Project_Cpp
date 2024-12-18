@@ -428,6 +428,7 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 	}
 
 	// Quét tất cả các file trong thư mục
+	m_pb_manager->AddFile("Scan Directory");
 	FileEntry file_entry{};
 	size_t current_file_count = 0;
 
@@ -478,11 +479,13 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 
 	for (const auto& fileEntry : fileEntries)
 	{
-		if (!UploadFile(fileEntry.absolute_path, fileEntry.relative_path))
+		try
 		{
-			std::cerr << "Failed to upload file: " << fileEntry.relative_path << std::endl;
-			is_uploading_directory = false;
-			return false;
+			UploadFile(fileEntry.absolute_path, fileEntry.relative_path);
+		}
+		catch (const std::exception& e)
+		{
+			continue;
 		}
 	}
 
