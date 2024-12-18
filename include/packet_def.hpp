@@ -70,29 +70,29 @@ struct PacketHeader
 
 	// Default constructor
 	PacketHeader() : magic_number(PACKET_MAGIC_NUMBER),
-					 version(1),
-					 packet_type(PacketType::ERR_PACKET),
-					 session_id{0},
-					 payload_length(0)
+		version(1),
+		packet_type(PacketType::ERR_PACKET),
+		session_id{ 0 },
+		payload_length(0)
 	{
 	}
 
 	// Constructor with packet type and payload length
 	PacketHeader(PacketType type, uint32_t length) : magic_number(PACKET_MAGIC_NUMBER),
-													 version(1),
-													 packet_type(type),
-													 session_id{0},
-													 payload_length(length)
+		version(1),
+		packet_type(type),
+		session_id{ 0 },
+		payload_length(length)
 	{
 	}
 
 	// Constructor with packet type, session ID, and payload length
-	PacketHeader(PacketType type, const uint8_t *session_id, uint32_t length)
+	PacketHeader(PacketType type, const uint8_t* session_id, uint32_t length)
 		: magic_number(PACKET_MAGIC_NUMBER),
-		  version(1),
-		  packet_type(type),
-		  session_id{0},
-		  payload_length(length)
+		version(1),
+		packet_type(type),
+		session_id{ 0 },
+		payload_length(length)
 	{
 		if (session_id)
 		{
@@ -107,7 +107,7 @@ struct PacketHeader
 		return buffer;
 	}
 
-	static PacketHeader deserialize(const uint8_t *data, size_t size)
+	static PacketHeader deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(PacketHeader))
 			throw std::runtime_error("Insufficient data for PacketHeader deserialization");
@@ -122,7 +122,7 @@ struct PacketHeader
 		return (magic_number == PACKET_MAGIC_NUMBER) && (version == 1);
 	}
 
-	void SetSessionID(const uint8_t *new_session_id)
+	void SetSessionID(const uint8_t* new_session_id)
 	{
 		if (new_session_id)
 		{
@@ -130,12 +130,12 @@ struct PacketHeader
 		}
 	}
 
-	uint8_t *GetSessionID() const
+	uint8_t* GetSessionID() const
 	{
-		return const_cast<uint8_t *>(session_id);
+		return const_cast<uint8_t*>(session_id);
 	}
 
-	bool ValidateSessionID(const uint8_t *session_id) const
+	bool ValidateSessionID(const uint8_t* session_id) const
 	{
 		return memcmp(this->session_id, session_id, 16) == 0;
 	}
@@ -152,7 +152,7 @@ struct PacketHandshakeRequest
 		return buffer;
 	}
 
-	static PacketHandshakeRequest deserialize(const uint8_t *data, size_t size)
+	static PacketHandshakeRequest deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(PacketHandshakeRequest))
 			throw std::runtime_error("Insufficient data for PacketHandshakeRequest deserialization");
@@ -175,15 +175,15 @@ struct PacketHandshakeResponse
 
 	PacketHandshakeResponse()
 		: server_version(1),
-		  message_length(0),
-		  message()
+		message_length(0),
+		message()
 	{
 	}
 
-	PacketHandshakeResponse(uint8_t version, const std::string &msg)
+	PacketHandshakeResponse(uint8_t version, const std::string& msg)
 		: server_version(version),
-		  message_length(static_cast<uint16_t>(msg.length())),
-		  message(msg)
+		message_length(static_cast<uint16_t>(msg.length())),
+		message(msg)
 	{
 	}
 
@@ -201,8 +201,8 @@ struct PacketHandshakeResponse
 
 		// Serialize message length
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&message_length),
-					  reinterpret_cast<const uint8_t *>(&message_length) + sizeof(message_length));
+			reinterpret_cast<const uint8_t*>(&message_length),
+			reinterpret_cast<const uint8_t*>(&message_length) + sizeof(message_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), message.begin(), message.end());
@@ -210,7 +210,7 @@ struct PacketHandshakeResponse
 		return buffer;
 	}
 
-	static PacketHandshakeResponse deserialize(const uint8_t *data, size_t size)
+	static PacketHandshakeResponse deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(server_version) + sizeof(message_length))
 			throw std::runtime_error("Insufficient data for PacketHandshakeResponse deserialization");
@@ -230,7 +230,7 @@ struct PacketHandshakeResponse
 			throw std::runtime_error("Insufficient data for PacketHandshakeResponse deserialization");
 
 		// Deserialize variable-size fields
-		response.message.assign(reinterpret_cast<const char *>(data + offset), response.message_length);
+		response.message.assign(reinterpret_cast<const char*>(data + offset), response.message_length);
 
 		return response;
 	}
@@ -248,7 +248,7 @@ struct PacketReconnectRequest
 		return buffer;
 	}
 
-	static PacketReconnectRequest deserialize(const uint8_t *data, size_t size)
+	static PacketReconnectRequest deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(PacketReconnectRequest))
 			throw std::runtime_error("Insufficient data for PacketReconnectRequest deserialization");
@@ -268,15 +268,15 @@ struct PacketReconnectResponse
 
 	PacketReconnectResponse()
 		: reconnected(false),
-		  message_length(0),
-		  message()
+		message_length(0),
+		message()
 	{
 	}
 
-	PacketReconnectResponse(bool reconnected, const std::string &msg)
+	PacketReconnectResponse(bool reconnected, const std::string& msg)
 		: reconnected(reconnected),
-		  message_length(static_cast<uint16_t>(msg.length())),
-		  message(msg)
+		message_length(static_cast<uint16_t>(msg.length())),
+		message(msg)
 	{
 	}
 
@@ -294,8 +294,8 @@ struct PacketReconnectResponse
 
 		// Serialize message length
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&message_length),
-					  reinterpret_cast<const uint8_t *>(&message_length) + sizeof(message_length));
+			reinterpret_cast<const uint8_t*>(&message_length),
+			reinterpret_cast<const uint8_t*>(&message_length) + sizeof(message_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), message.begin(), message.end());
@@ -303,7 +303,7 @@ struct PacketReconnectResponse
 		return buffer;
 	}
 
-	static PacketReconnectResponse deserialize(const uint8_t *data, size_t size)
+	static PacketReconnectResponse deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(reconnected) + sizeof(message_length))
 			throw std::runtime_error("Insufficient data for PacketReconnectResponse deserialization");
@@ -323,7 +323,7 @@ struct PacketReconnectResponse
 			throw std::runtime_error("Insufficient data for PacketReconnectResponse deserialization");
 
 		// Deserialize variable-size fields
-		response.message.assign(reinterpret_cast<const char *>(data + offset), response.message_length);
+		response.message.assign(reinterpret_cast<const char*>(data + offset), response.message_length);
 
 		return response;
 	}
@@ -336,7 +336,7 @@ struct PacketAuthenticationRequest
 
 	PacketAuthenticationRequest() : username(), password() {}
 
-	PacketAuthenticationRequest(const std::string &user, const std::string &pass)
+	PacketAuthenticationRequest(const std::string& user, const std::string& pass)
 	{
 		if (user.length() > MAX_USERNAME_LENGTH)
 			throw std::runtime_error("Username length exceeds the maximum value");
@@ -356,7 +356,7 @@ struct PacketAuthenticationRequest
 		return buffer;
 	}
 
-	static PacketAuthenticationRequest deserialize(const uint8_t *data, size_t size)
+	static PacketAuthenticationRequest deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(PacketAuthenticationRequest))
 			throw std::runtime_error("Insufficient data for PacketAuthenticationRequest deserialization");
@@ -375,13 +375,13 @@ struct PacketAuthenticationResponse
 	std::string message;	 // Message (e.g., "Authentication successful")
 	// This message can be used for debugging purposes
 
-	PacketAuthenticationResponse() : authenticated(false), session_id{0}, message_length(0), message() {}
+	PacketAuthenticationResponse() : authenticated(false), session_id{ 0 }, message_length(0), message() {}
 
-	PacketAuthenticationResponse(bool auth, const uint8_t *session_id, const std::string &msg)
+	PacketAuthenticationResponse(bool auth, const uint8_t* session_id, const std::string& msg)
 		: authenticated(auth),
-		  session_id{0},
-		  message_length(static_cast<uint16_t>(msg.length())),
-		  message(msg)
+		session_id{ 0 },
+		message_length(static_cast<uint16_t>(msg.length())),
+		message(msg)
 	{
 		if (session_id)
 		{
@@ -399,15 +399,15 @@ struct PacketAuthenticationResponse
 		buffer.insert(buffer.end(), session_id, session_id + 16);
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&message_length),
-					  reinterpret_cast<const uint8_t *>(&message_length) + sizeof(message_length));
+			reinterpret_cast<const uint8_t*>(&message_length),
+			reinterpret_cast<const uint8_t*>(&message_length) + sizeof(message_length));
 
 		buffer.insert(buffer.end(), message.begin(), message.end());
 
 		return buffer;
 	}
 
-	static PacketAuthenticationResponse deserialize(const uint8_t *data, size_t size)
+	static PacketAuthenticationResponse deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(authenticated) + sizeof(session_id))
 			throw std::runtime_error("Insufficient data for PacketAuthenticationResponse deserialization");
@@ -424,7 +424,7 @@ struct PacketAuthenticationResponse
 		if (size < offset + sizeof(response.message_length))
 			throw std::runtime_error("Insufficient data for PacketAuthenticationResponse deserialization");
 
-		response.message.assign(reinterpret_cast<const char *>(data + offset), response.message_length);
+		response.message.assign(reinterpret_cast<const char*>(data + offset), response.message_length);
 
 		return response;
 	}
@@ -433,49 +433,40 @@ struct PacketAuthenticationResponse
 struct FileEntry
 {
 	uint64_t file_size;		   // File size (in bytes) - (8 bytes)
-	uint64_t last_modified;	   // Last modified timestamp - (8 bytes)
 	uint8_t is_dir;			   // Is directory (1 byte)
 	uint16_t file_path_length; // File path length - (2 bytes)
 	uint16_t file_name_length; // File name length - (2 bytes)
-	uint16_t file_type_length; // File type (e.g., image, video, document, etc.) - (2 bytes)
 
 	std::string file_path; // File path
 	std::string file_name; // File name
-	std::string file_type; // File type
 
 	// Total size: 23 bytes (fixed-size fields) + variable-size fields
 
 	FileEntry() : file_size(0),
-				  last_modified(0),
-				  is_dir(0),
-				  file_path_length(0),
-				  file_name_length(0),
-				  file_type_length(0),
-				  file_path(),
-				  file_name(),
-				  file_type()
+		is_dir(0),
+		file_path_length(0),
+		file_name_length(0),
+		file_path(),
+		file_name()
 	{
 	}
 
-	FileEntry(const std::string &path, const std::string &name, const std::string &type,
-			  uint64_t size, uint64_t modified, bool is_directory)
+	FileEntry(const std::string& path, const std::string& name,
+		uint64_t size, bool is_directory)
 		: file_size(size),
-		  last_modified(modified),
-		  is_dir(is_directory ? 1 : 0),
-		  file_path_length(static_cast<uint16_t>(path.length())),
-		  file_name_length(static_cast<uint16_t>(name.length())),
-		  file_type_length(static_cast<uint16_t>(type.length())),
-		  file_path(path),
-		  file_name(name),
-		  file_type(type)
+		is_dir(is_directory ? 1 : 0),
+		file_path_length(static_cast<uint16_t>(path.length())),
+		file_name_length(static_cast<uint16_t>(name.length())),
+		file_path(path),
+		file_name(name)
 	{
 	}
 
 	size_t GetSize() const
 	{
-		return sizeof(file_size) + sizeof(last_modified) + sizeof(is_dir) +
-			   sizeof(file_path_length) + sizeof(file_name_length) + sizeof(file_type_length) +
-			   file_path.size() + file_name.size() + file_type.size();
+		return sizeof(file_size) + sizeof(is_dir) +
+			sizeof(file_path_length) + sizeof(file_name_length) +
+			file_path.size() + file_name.size();
 	}
 
 	std::vector<uint8_t> serialize() const
@@ -486,39 +477,31 @@ struct FileEntry
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_size),
-					  reinterpret_cast<const uint8_t *>(&file_size) + sizeof(file_size));
-		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&last_modified),
-					  reinterpret_cast<const uint8_t *>(&last_modified) + sizeof(last_modified));
+			reinterpret_cast<const uint8_t*>(&file_size),
+			reinterpret_cast<const uint8_t*>(&file_size) + sizeof(file_size));
 
 		buffer.push_back(is_dir);
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_path_length),
-					  reinterpret_cast<const uint8_t *>(&file_path_length) + sizeof(file_path_length));
+			reinterpret_cast<const uint8_t*>(&file_path_length),
+			reinterpret_cast<const uint8_t*>(&file_path_length) + sizeof(file_path_length));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_name_length),
-					  reinterpret_cast<const uint8_t *>(&file_name_length) + sizeof(file_name_length));
-
-		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_type_length),
-					  reinterpret_cast<const uint8_t *>(&file_type_length) + sizeof(file_type_length));
+			reinterpret_cast<const uint8_t*>(&file_name_length),
+			reinterpret_cast<const uint8_t*>(&file_name_length) + sizeof(file_name_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), file_path.begin(), file_path.end());
 		buffer.insert(buffer.end(), file_name.begin(), file_name.end());
-		buffer.insert(buffer.end(), file_type.begin(), file_type.end());
 
 		return buffer;
 	}
 
-	static FileEntry deserialize(const uint8_t *data, size_t size)
+	static FileEntry deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint8_t) +
-							sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t);
+			sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t);
 
 		if (size < fixed_size)
 			throw std::runtime_error("Insufficient data for FileEntry deserialization");
@@ -529,9 +512,6 @@ struct FileEntry
 		memcpy(&entry.file_size, data + offset, sizeof(entry.file_size));
 		offset += sizeof(entry.file_size);
 
-		memcpy(&entry.last_modified, data + offset, sizeof(entry.last_modified));
-		offset += sizeof(entry.last_modified);
-
 		entry.is_dir = data[offset++];
 
 		memcpy(&entry.file_path_length, data + offset, sizeof(entry.file_path_length));
@@ -540,11 +520,8 @@ struct FileEntry
 		memcpy(&entry.file_name_length, data + offset, sizeof(entry.file_name_length));
 		offset += sizeof(entry.file_name_length);
 
-		memcpy(&entry.file_type_length, data + offset, sizeof(entry.file_type_length));
-		offset += sizeof(entry.file_type_length);
-
 		// Calculate expected size
-		size_t expected_size = fixed_size + entry.file_path_length + entry.file_name_length + entry.file_type_length;
+		size_t expected_size = fixed_size + entry.file_path_length + entry.file_name_length;
 
 		if (size < expected_size)
 			throw std::runtime_error("Insufficient data for FileEntry deserialization");
@@ -554,9 +531,6 @@ struct FileEntry
 		offset += entry.file_path_length;
 
 		entry.file_name.assign(data + offset, data + offset + entry.file_name_length);
-		offset += entry.file_name_length;
-
-		entry.file_type.assign(data + offset, data + offset + entry.file_type_length);
 		// No need to increment offset because this is the last field
 
 		return entry;
@@ -564,7 +538,6 @@ struct FileEntry
 
 	std::string GetFilePath() const { return file_path; }
 	std::string GetFileName() const { return file_name; }
-	std::string GetFileType() const { return file_type; }
 	bool IsDirectory() const { return is_dir != 0; }
 };
 
@@ -575,13 +548,13 @@ struct PacketViewCloudResponse
 	uint32_t file_count; // Số lượng file trong không gian lưu trữ của User - 8 bytes
 	uint64_t total_size; // Tổng kích thước của không gian lưu trữ - 8 bytes
 
-	std::vector<uint8_t> serialize(const std::vector<FileEntry> &file_entries)
+	std::vector<uint8_t> serialize(const std::vector<FileEntry>& file_entries)
 	{
 		total_size = 0;
 		file_count = static_cast<uint32_t>(file_entries.size());
 
 		size_t entries_size = 0;
-		for (const auto &entry : file_entries)
+		for (const auto& entry : file_entries)
 		{
 			entries_size += entry.GetSize();
 			total_size += entry.file_size;
@@ -594,15 +567,15 @@ struct PacketViewCloudResponse
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_count),
-					  reinterpret_cast<const uint8_t *>(&file_count) + sizeof(file_count));
+			reinterpret_cast<const uint8_t*>(&file_count),
+			reinterpret_cast<const uint8_t*>(&file_count) + sizeof(file_count));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&total_size),
-					  reinterpret_cast<const uint8_t *>(&total_size) + sizeof(total_size));
+			reinterpret_cast<const uint8_t*>(&total_size),
+			reinterpret_cast<const uint8_t*>(&total_size) + sizeof(total_size));
 
 		// Serialize variable-size fields
-		for (const auto &entry : file_entries)
+		for (const auto& entry : file_entries)
 		{
 			std::vector<uint8_t> entry_data = entry.serialize();
 			buffer.insert(buffer.end(), entry_data.begin(), entry_data.end());
@@ -611,7 +584,7 @@ struct PacketViewCloudResponse
 		return buffer;
 	}
 
-	static std::pair<PacketViewCloudResponse, std::vector<FileEntry>> deserialize(const uint8_t *data, size_t size)
+	static std::pair<PacketViewCloudResponse, std::vector<FileEntry>> deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(uint32_t) + sizeof(uint64_t);
@@ -641,7 +614,7 @@ struct PacketViewCloudResponse
 			offset += entry.GetSize();
 		}
 
-		return {response, entries};
+		return { response, entries };
 	}
 };
 
@@ -653,9 +626,9 @@ struct PacketCreateDirRequest
 
 	PacketCreateDirRequest() : dir_path_length(0), dir_path() {}
 
-	PacketCreateDirRequest(const std::string &path)
+	PacketCreateDirRequest(const std::string& path)
 		: dir_path_length(static_cast<uint16_t>(path.length())),
-		  dir_path(path)
+		dir_path(path)
 	{
 	}
 
@@ -667,8 +640,8 @@ struct PacketCreateDirRequest
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&dir_path_length),
-					  reinterpret_cast<const uint8_t *>(&dir_path_length) + sizeof(dir_path_length));
+			reinterpret_cast<const uint8_t*>(&dir_path_length),
+			reinterpret_cast<const uint8_t*>(&dir_path_length) + sizeof(dir_path_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), dir_path.begin(), dir_path.end());
@@ -676,7 +649,7 @@ struct PacketCreateDirRequest
 		return buffer;
 	}
 
-	static PacketCreateDirRequest deserialize(const uint8_t *data, size_t size)
+	static PacketCreateDirRequest deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(uint16_t);
@@ -697,7 +670,7 @@ struct PacketCreateDirRequest
 			throw std::runtime_error("Insufficient data for PacketCreateDirRequest deserialization");
 
 		// Deserialize variable-size fields
-		request.dir_path.assign(reinterpret_cast<const char *>(data + offset), request.dir_path_length);
+		request.dir_path.assign(reinterpret_cast<const char*>(data + offset), request.dir_path_length);
 
 		return request;
 	}
@@ -712,10 +685,10 @@ struct PacketCreateDirResponse
 
 	PacketCreateDirResponse() : created(true), message_length(0), message() {}
 
-	PacketCreateDirResponse(bool success, const std::string &msg)
+	PacketCreateDirResponse(bool success, const std::string& msg)
 		: created(success),
-		  message_length(static_cast<uint16_t>(msg.length())),
-		  message(msg)
+		message_length(static_cast<uint16_t>(msg.length())),
+		message(msg)
 	{
 	}
 
@@ -733,8 +706,8 @@ struct PacketCreateDirResponse
 
 		// Serialize message length
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&message_length),
-					  reinterpret_cast<const uint8_t *>(&message_length) + sizeof(message_length));
+			reinterpret_cast<const uint8_t*>(&message_length),
+			reinterpret_cast<const uint8_t*>(&message_length) + sizeof(message_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), message.begin(), message.end());
@@ -742,7 +715,7 @@ struct PacketCreateDirResponse
 		return buffer;
 	}
 
-	static PacketCreateDirResponse deserialize(const uint8_t *data, size_t size)
+	static PacketCreateDirResponse deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(created) + sizeof(message_length))
 			throw std::runtime_error("Insufficient data for PacketCreateDirResponse deserialization");
@@ -762,7 +735,7 @@ struct PacketCreateDirResponse
 			throw std::runtime_error("Insufficient data for PacketCreateDirResponse deserialization");
 
 		// Deserialize variable-size fields
-		response.message.assign(reinterpret_cast<const char *>(data + offset), response.message_length);
+		response.message.assign(reinterpret_cast<const char*>(data + offset), response.message_length);
 
 		return response;
 	}
@@ -782,22 +755,22 @@ struct PacketUploadRequest
 
 	PacketUploadRequest()
 		: file_size(0),
-		  checksum{0},
-		  file_name_length(0),
-		  file_type_length(0),
-		  file_name(),
-		  file_type()
+		checksum{ 0 },
+		file_name_length(0),
+		file_type_length(0),
+		file_name(),
+		file_type()
 	{
 	}
 
-	PacketUploadRequest(const std::string &name, const std::string &type,
-						uint64_t size, const uint8_t *checksum)
+	PacketUploadRequest(const std::string& name, const std::string& type,
+		uint64_t size, const uint8_t* checksum)
 		: file_size(size),
-		  checksum{0},
-		  file_name_length(static_cast<uint16_t>(name.length())),
-		  file_type_length(static_cast<uint16_t>(type.length())),
-		  file_name(name),
-		  file_type(type)
+		checksum{ 0 },
+		file_name_length(static_cast<uint16_t>(name.length())),
+		file_type_length(static_cast<uint16_t>(type.length())),
+		file_name(name),
+		file_type(type)
 	{
 		if (checksum)
 		{
@@ -808,26 +781,26 @@ struct PacketUploadRequest
 	std::vector<uint8_t> serialize() const
 	{
 		size_t total_size = sizeof(file_size) + sizeof(checksum) +
-							sizeof(file_name_length) + sizeof(file_type_length) +
-							file_name.length() + file_type.length();
+			sizeof(file_name_length) + sizeof(file_type_length) +
+			file_name.length() + file_type.length();
 
 		std::vector<uint8_t> buffer;
 		buffer.reserve(total_size);
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_size),
-					  reinterpret_cast<const uint8_t *>(&file_size) + sizeof(file_size));
+			reinterpret_cast<const uint8_t*>(&file_size),
+			reinterpret_cast<const uint8_t*>(&file_size) + sizeof(file_size));
 
 		buffer.insert(buffer.end(), checksum, checksum + 16);
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_name_length),
-					  reinterpret_cast<const uint8_t *>(&file_name_length) + sizeof(file_name_length));
+			reinterpret_cast<const uint8_t*>(&file_name_length),
+			reinterpret_cast<const uint8_t*>(&file_name_length) + sizeof(file_name_length));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_type_length),
-					  reinterpret_cast<const uint8_t *>(&file_type_length) + sizeof(file_type_length));
+			reinterpret_cast<const uint8_t*>(&file_type_length),
+			reinterpret_cast<const uint8_t*>(&file_type_length) + sizeof(file_type_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), file_name.begin(), file_name.end());
@@ -836,11 +809,11 @@ struct PacketUploadRequest
 		return buffer;
 	}
 
-	static PacketUploadRequest deserialize(const uint8_t *data, size_t size)
+	static PacketUploadRequest deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(file_size) + sizeof(checksum) +
-							sizeof(file_name_length) + sizeof(file_type_length);
+			sizeof(file_name_length) + sizeof(file_type_length);
 
 		if (size < fixed_size)
 			throw std::runtime_error("Insufficient data for PacketUploadRequest deserialization");
@@ -867,10 +840,10 @@ struct PacketUploadRequest
 			throw std::runtime_error("Insufficient data for PacketUploadRequest deserialization");
 
 		// Deserialize variable-size fields
-		request.file_name.assign(reinterpret_cast<const char *>(data + offset), request.file_name_length);
+		request.file_name.assign(reinterpret_cast<const char*>(data + offset), request.file_name_length);
 		offset += request.file_name_length;
 
-		request.file_type.assign(reinterpret_cast<const char *>(data + offset), request.file_type_length);
+		request.file_type.assign(reinterpret_cast<const char*>(data + offset), request.file_type_length);
 		// No need to increment offset because this is the last field
 
 		return request;
@@ -889,38 +862,38 @@ struct PacketUploadDirRequest
 
 	PacketUploadDirRequest() : file_count(0), total_size(0), checksum_flag(0), dir_path_length(0), dir_path() {}
 
-	PacketUploadDirRequest(const std::string &path, uint32_t count, uint64_t size, uint8_t flag)
+	PacketUploadDirRequest(const std::string& path, uint32_t count, uint64_t size, uint8_t flag)
 		: file_count(count),
-		  total_size(size),
-		  checksum_flag(flag),
-		  dir_path_length(static_cast<uint16_t>(path.length())),
-		  dir_path(path)
+		total_size(size),
+		checksum_flag(flag),
+		dir_path_length(static_cast<uint16_t>(path.length())),
+		dir_path(path)
 	{
 	}
 
 	std::vector<uint8_t> serialize() const
 	{
 		size_t total_size = sizeof(file_count) + sizeof(total_size) +
-							sizeof(checksum_flag) + sizeof(dir_path_length) +
-							dir_path.length();
+			sizeof(checksum_flag) + sizeof(dir_path_length) +
+			dir_path.length();
 
 		std::vector<uint8_t> buffer;
 		buffer.reserve(total_size);
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_count),
-					  reinterpret_cast<const uint8_t *>(&file_count) + sizeof(file_count));
+			reinterpret_cast<const uint8_t*>(&file_count),
+			reinterpret_cast<const uint8_t*>(&file_count) + sizeof(file_count));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&total_size),
-					  reinterpret_cast<const uint8_t *>(&total_size) + sizeof(total_size));
+			reinterpret_cast<const uint8_t*>(&total_size),
+			reinterpret_cast<const uint8_t*>(&total_size) + sizeof(total_size));
 
 		buffer.push_back(checksum_flag);
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&dir_path_length),
-					  reinterpret_cast<const uint8_t *>(&dir_path_length) + sizeof(dir_path_length));
+			reinterpret_cast<const uint8_t*>(&dir_path_length),
+			reinterpret_cast<const uint8_t*>(&dir_path_length) + sizeof(dir_path_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), dir_path.begin(), dir_path.end());
@@ -928,11 +901,11 @@ struct PacketUploadDirRequest
 		return buffer;
 	}
 
-	static PacketUploadDirRequest deserialize(const uint8_t *data, size_t size)
+	static PacketUploadDirRequest deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(file_count) + sizeof(total_size) +
-							sizeof(checksum_flag) + sizeof(dir_path_length);
+			sizeof(checksum_flag) + sizeof(dir_path_length);
 
 		if (size < fixed_size)
 			throw std::runtime_error("Insufficient data for PacketUploadDirRequest deserialization");
@@ -958,7 +931,7 @@ struct PacketUploadDirRequest
 			throw std::runtime_error("Insufficient data for PacketUploadDirRequest deserialization");
 
 		// Deserialize variable-size fields
-		request.dir_path.assign(reinterpret_cast<const char *>(data + offset), request.dir_path_length);
+		request.dir_path.assign(reinterpret_cast<const char*>(data + offset), request.dir_path_length);
 
 		return request;
 	}
@@ -981,18 +954,18 @@ struct PacketUploadResponse
 		{
 			uint32_t file_id;	 // File ID (unique identifier) - (4 bytes)
 			uint32_t chunk_size; // Chunk size (in bytes) - (4 bytes)
-								 // Total size: 9 bytes
+			// Total size: 9 bytes
 		} upload_allowed;
 
 		// Case UploadStatus::OUT_OF_SPACE
 		struct OutOfSpace
 		{
 			char message[MAX_MESSAGE_LENGTH]; // Message - (256 bytes)
-											  // Total size: 256 bytes
+			// Total size: 256 bytes
 		} out_of_space;
 	};
 
-	PacketUploadResponse() : status(UploadStatus::UPLOAD_ALLOWED), upload_allowed{0, 0} {}
+	PacketUploadResponse() : status(UploadStatus::UPLOAD_ALLOWED), upload_allowed{ 0, 0 } {}
 
 	PacketUploadResponse(UploadStatus status, uint32_t file_id, uint32_t chunk_size)
 		: status(status)
@@ -1004,7 +977,7 @@ struct PacketUploadResponse
 		}
 	}
 
-	PacketUploadResponse(UploadStatus status, const std::string &msg)
+	PacketUploadResponse(UploadStatus status, const std::string& msg)
 		: status(status)
 	{
 		if (status == UploadStatus::OUT_OF_SPACE)
@@ -1035,20 +1008,20 @@ struct PacketUploadResponse
 		if (status == UploadStatus::UPLOAD_ALLOWED)
 		{
 			buffer.insert(buffer.end(),
-						  reinterpret_cast<const uint8_t *>(&upload_allowed),
-						  reinterpret_cast<const uint8_t *>(&upload_allowed) + sizeof(upload_allowed));
+				reinterpret_cast<const uint8_t*>(&upload_allowed),
+				reinterpret_cast<const uint8_t*>(&upload_allowed) + sizeof(upload_allowed));
 		}
 		else if (status == UploadStatus::OUT_OF_SPACE)
 		{
 			buffer.insert(buffer.end(),
-						  reinterpret_cast<const uint8_t *>(&out_of_space),
-						  reinterpret_cast<const uint8_t *>(&out_of_space) + sizeof(out_of_space));
+				reinterpret_cast<const uint8_t*>(&out_of_space),
+				reinterpret_cast<const uint8_t*>(&out_of_space) + sizeof(out_of_space));
 		}
 
 		return buffer;
 	}
 
-	static PacketUploadResponse deserialize(const uint8_t *data, size_t size)
+	static PacketUploadResponse deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < 1)
 			throw std::runtime_error("Insufficient data for PacketUploadResponse deserialization");
@@ -1085,9 +1058,9 @@ struct PacketDownloadRequest
 
 	PacketDownloadRequest() : file_name_length(0), file_name() {}
 
-	PacketDownloadRequest(const std::string &name)
+	PacketDownloadRequest(const std::string& name)
 		: file_name_length(static_cast<uint16_t>(name.length())),
-		  file_name(name)
+		file_name(name)
 	{
 	}
 
@@ -1099,8 +1072,8 @@ struct PacketDownloadRequest
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_name_length),
-					  reinterpret_cast<const uint8_t *>(&file_name_length) + sizeof(file_name_length));
+			reinterpret_cast<const uint8_t*>(&file_name_length),
+			reinterpret_cast<const uint8_t*>(&file_name_length) + sizeof(file_name_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), file_name.begin(), file_name.end());
@@ -1108,7 +1081,7 @@ struct PacketDownloadRequest
 		return buffer;
 	}
 
-	static PacketDownloadRequest deserialize(const uint8_t *data, size_t size)
+	static PacketDownloadRequest deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(file_name_length);
@@ -1129,7 +1102,7 @@ struct PacketDownloadRequest
 			throw std::runtime_error("Insufficient data for PacketDownloadRequest deserialization");
 
 		// Deserialize variable-size fields
-		request.file_name.assign(reinterpret_cast<const char *>(data + offset), request.file_name_length);
+		request.file_name.assign(reinterpret_cast<const char*>(data + offset), request.file_name_length);
 
 		return request;
 	}
@@ -1155,20 +1128,20 @@ struct PacketDownloadResponse
 			uint64_t file_size;	  // File size (in bytes) - (8 bytes)
 			uint32_t chunk_size;  // Chunk size (in bytes) - (4 bytes)
 			uint8_t checksum[16]; // Checksum of the file - (16 bytes)
-								  // Total size: 32 bytes
+			// Total size: 32 bytes
 		} file_info;
 
 		// Case DownloadStatus::FILE_NOT_FOUND or DownloadStatus::FILE_ACCESS_DENIED
 		struct
 		{
 			char message[MAX_MESSAGE_LENGTH]; // Message - (256 bytes)
-											  // Total size: 256 bytes
+			// Total size: 256 bytes
 		} error_info;
 	};
 
-	PacketDownloadResponse() : status(DownloadStatus::FILE_FOUND), file_info{0, 0, 0} {}
+	PacketDownloadResponse() : status(DownloadStatus::FILE_FOUND), file_info{ 0, 0, 0 } {}
 
-	PacketDownloadResponse(DownloadStatus status, uint32_t file_id, uint64_t size, uint32_t chunk_size, const uint8_t *checksum)
+	PacketDownloadResponse(DownloadStatus status, uint32_t file_id, uint64_t size, uint32_t chunk_size, const uint8_t* checksum)
 		: status(status)
 	{
 		if (status == DownloadStatus::FILE_FOUND)
@@ -1184,7 +1157,7 @@ struct PacketDownloadResponse
 		}
 	}
 
-	PacketDownloadResponse(DownloadStatus status, const std::string &msg)
+	PacketDownloadResponse(DownloadStatus status, const std::string& msg)
 		: status(status)
 	{
 		if (status == DownloadStatus::FILE_NOT_FOUND || status == DownloadStatus::FILE_ACCESS_DENIED)
@@ -1215,20 +1188,20 @@ struct PacketDownloadResponse
 		if (status == DownloadStatus::FILE_FOUND)
 		{
 			buffer.insert(buffer.end(),
-						  reinterpret_cast<const uint8_t *>(&file_info),
-						  reinterpret_cast<const uint8_t *>(&file_info) + sizeof(file_info));
+				reinterpret_cast<const uint8_t*>(&file_info),
+				reinterpret_cast<const uint8_t*>(&file_info) + sizeof(file_info));
 		}
 		else if (status == DownloadStatus::FILE_NOT_FOUND || status == DownloadStatus::FILE_ACCESS_DENIED)
 		{
 			buffer.insert(buffer.end(),
-						  reinterpret_cast<const uint8_t *>(&error_info),
-						  reinterpret_cast<const uint8_t *>(&error_info) + sizeof(error_info));
+				reinterpret_cast<const uint8_t*>(&error_info),
+				reinterpret_cast<const uint8_t*>(&error_info) + sizeof(error_info));
 		}
 
 		return buffer;
 	}
 
-	static PacketDownloadResponse deserialize(const uint8_t *data, size_t size)
+	static PacketDownloadResponse deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < 1)
 			throw std::runtime_error("Insufficient data for PacketDownloadResponse deserialization");
@@ -1268,8 +1241,8 @@ struct PacketResumeRequest
 
 	PacketResumeRequest(uint32_t id, uint64_t position, uint32_t index)
 		: file_id(id),
-		  resume_position(position),
-		  last_chunk_index(index)
+		resume_position(position),
+		last_chunk_index(index)
 	{
 	}
 
@@ -1281,21 +1254,21 @@ struct PacketResumeRequest
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_id),
-					  reinterpret_cast<const uint8_t *>(&file_id) + sizeof(file_id));
+			reinterpret_cast<const uint8_t*>(&file_id),
+			reinterpret_cast<const uint8_t*>(&file_id) + sizeof(file_id));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&resume_position),
-					  reinterpret_cast<const uint8_t *>(&resume_position) + sizeof(resume_position));
+			reinterpret_cast<const uint8_t*>(&resume_position),
+			reinterpret_cast<const uint8_t*>(&resume_position) + sizeof(resume_position));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&last_chunk_index),
-					  reinterpret_cast<const uint8_t *>(&last_chunk_index) + sizeof(last_chunk_index));
+			reinterpret_cast<const uint8_t*>(&last_chunk_index),
+			reinterpret_cast<const uint8_t*>(&last_chunk_index) + sizeof(last_chunk_index));
 
 		return buffer;
 	}
 
-	static PacketResumeRequest deserialize(const uint8_t *data, size_t size)
+	static PacketResumeRequest deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(file_id) + sizeof(resume_position) + sizeof(last_chunk_index);
@@ -1337,18 +1310,18 @@ struct PacketResumeResponse
 			uint32_t file_id;				// File ID (unique identifier) - (4 bytes)
 			uint64_t resume_position;		// Resume position (in bytes) - (8 bytes)
 			uint32_t remaining_chunk_count; // Remaining chunk count - (4 bytes)
-											// Total size: 16 bytes
+			// Total size: 16 bytes
 		} resume_allowed;
 
 		// Case ResumeStatus::RESUME_NOT_FOUND
 		struct
 		{
 			char message[MAX_MESSAGE_LENGTH]; // Message - (256 bytes)
-											  // Total size: 256 bytes
+			// Total size: 256 bytes
 		} resume_not_found;
 	};
 
-	PacketResumeResponse() : status(ResumeStatus::RESUME_SUPPORTED), resume_allowed{0, 0, 0} {}
+	PacketResumeResponse() : status(ResumeStatus::RESUME_SUPPORTED), resume_allowed{ 0, 0, 0 } {}
 
 	PacketResumeResponse(ResumeStatus status, uint32_t file_id, uint64_t position, uint32_t count)
 		: status(status)
@@ -1361,7 +1334,7 @@ struct PacketResumeResponse
 		}
 	}
 
-	PacketResumeResponse(ResumeStatus status, const std::string &msg)
+	PacketResumeResponse(ResumeStatus status, const std::string& msg)
 		: status(status)
 	{
 		if (status == ResumeStatus::RESUME_NOT_FOUND)
@@ -1392,20 +1365,20 @@ struct PacketResumeResponse
 		if (status == ResumeStatus::RESUME_SUPPORTED)
 		{
 			buffer.insert(buffer.end(),
-						  reinterpret_cast<const uint8_t *>(&resume_allowed),
-						  reinterpret_cast<const uint8_t *>(&resume_allowed) + sizeof(resume_allowed));
+				reinterpret_cast<const uint8_t*>(&resume_allowed),
+				reinterpret_cast<const uint8_t*>(&resume_allowed) + sizeof(resume_allowed));
 		}
 		else if (status == ResumeStatus::RESUME_NOT_FOUND)
 		{
 			buffer.insert(buffer.end(),
-						  reinterpret_cast<const uint8_t *>(&resume_not_found),
-						  reinterpret_cast<const uint8_t *>(&resume_not_found) + sizeof(resume_not_found));
+				reinterpret_cast<const uint8_t*>(&resume_not_found),
+				reinterpret_cast<const uint8_t*>(&resume_not_found) + sizeof(resume_not_found));
 		}
 
 		return buffer;
 	}
 
-	static PacketResumeResponse deserialize(const uint8_t *data, size_t size)
+	static PacketResumeResponse deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < 1)
 			throw std::runtime_error("Insufficient data for PacketResumeResponse deserialization");
@@ -1444,12 +1417,12 @@ struct PacketFileChunk
 	std::vector<uint8_t> data; // Chunk data
 	// Total size: 28 bytes (minimum) + chunk_size
 
-	PacketFileChunk() : file_id(0), chunk_index(0), chunk_size(0), checksum{0}, data() {}
+	PacketFileChunk() : file_id(0), chunk_index(0), chunk_size(0), checksum{ 0 }, data() {}
 
-	PacketFileChunk(uint32_t id, uint32_t index, uint32_t size, const uint8_t *checksum, const uint8_t *chunk_data)
+	PacketFileChunk(uint32_t id, uint32_t index, uint32_t size, const uint8_t* checksum, const uint8_t* chunk_data)
 		: file_id(id),
-		  chunk_index(index),
-		  chunk_size(size)
+		chunk_index(index),
+		chunk_size(size)
 	{
 		if (checksum)
 		{
@@ -1475,24 +1448,24 @@ struct PacketFileChunk
 	std::vector<uint8_t> serialize() const
 	{
 		size_t total_size = sizeof(file_id) + sizeof(chunk_index) +
-							sizeof(chunk_size) + sizeof(checksum) +
-							data.size();
+			sizeof(chunk_size) + sizeof(checksum) +
+			data.size();
 
 		std::vector<uint8_t> buffer;
 		buffer.reserve(total_size);
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_id),
-					  reinterpret_cast<const uint8_t *>(&file_id) + sizeof(file_id));
+			reinterpret_cast<const uint8_t*>(&file_id),
+			reinterpret_cast<const uint8_t*>(&file_id) + sizeof(file_id));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&chunk_index),
-					  reinterpret_cast<const uint8_t *>(&chunk_index) + sizeof(chunk_index));
+			reinterpret_cast<const uint8_t*>(&chunk_index),
+			reinterpret_cast<const uint8_t*>(&chunk_index) + sizeof(chunk_index));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&chunk_size),
-					  reinterpret_cast<const uint8_t *>(&chunk_size) + sizeof(chunk_size));
+			reinterpret_cast<const uint8_t*>(&chunk_size),
+			reinterpret_cast<const uint8_t*>(&chunk_size) + sizeof(chunk_size));
 
 		buffer.insert(buffer.end(), checksum, checksum + 16);
 
@@ -1502,11 +1475,11 @@ struct PacketFileChunk
 		return buffer;
 	}
 
-	static PacketFileChunk deserialize(const uint8_t *data, size_t size)
+	static PacketFileChunk deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(file_id) + sizeof(chunk_index) +
-							sizeof(chunk_size) + sizeof(checksum);
+			sizeof(chunk_size) + sizeof(checksum);
 
 		if (size < fixed_size)
 			throw std::runtime_error("Insufficient data for PacketFileChunk deserialization");
@@ -1533,8 +1506,8 @@ struct PacketFileChunk
 			throw std::runtime_error("Insufficient data for PacketFileChunk deserialization");
 
 		// Deserialize variable-size fields
-		chunk.data.assign(reinterpret_cast<const uint8_t *>(data + offset),
-						  reinterpret_cast<const uint8_t *>(data + offset) + chunk.chunk_size);
+		chunk.data.assign(reinterpret_cast<const uint8_t*>(data + offset),
+			reinterpret_cast<const uint8_t*>(data + offset) + chunk.chunk_size);
 
 		return chunk;
 	}
@@ -1551,8 +1524,8 @@ struct PacketFileChunkACK
 
 	PacketFileChunkACK(uint32_t id, uint32_t index, bool ack)
 		: file_id(id),
-		  chunk_index(index),
-		  success(ack)
+		chunk_index(index),
+		success(ack)
 	{
 	}
 
@@ -1565,19 +1538,19 @@ struct PacketFileChunkACK
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&file_id),
-					  reinterpret_cast<const uint8_t *>(&file_id) + sizeof(file_id));
+			reinterpret_cast<const uint8_t*>(&file_id),
+			reinterpret_cast<const uint8_t*>(&file_id) + sizeof(file_id));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&chunk_index),
-					  reinterpret_cast<const uint8_t *>(&chunk_index) + sizeof(chunk_index));
+			reinterpret_cast<const uint8_t*>(&chunk_index),
+			reinterpret_cast<const uint8_t*>(&chunk_index) + sizeof(chunk_index));
 
 		buffer.push_back(success);
 
 		return buffer;
 	}
 
-	static PacketFileChunkACK deserialize(const uint8_t *data, size_t size)
+	static PacketFileChunkACK deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(file_id) + sizeof(chunk_index) + sizeof(success);
@@ -1610,8 +1583,8 @@ struct PacketCloseSession
 
 	PacketCloseSession()
 		: timestamp(std::chrono::duration_cast<std::chrono::seconds>(
-						std::chrono::system_clock::now().time_since_epoch())
-						.count())
+			std::chrono::system_clock::now().time_since_epoch())
+			.count())
 	{
 	}
 
@@ -1623,13 +1596,13 @@ struct PacketCloseSession
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&timestamp),
-					  reinterpret_cast<const uint8_t *>(&timestamp) + sizeof(timestamp));
+			reinterpret_cast<const uint8_t*>(&timestamp),
+			reinterpret_cast<const uint8_t*>(&timestamp) + sizeof(timestamp));
 
 		return buffer;
 	}
 
-	static PacketCloseSession deserialize(const uint8_t *data, size_t size)
+	static PacketCloseSession deserialize(const uint8_t* data, size_t size)
 	{
 		if (size < sizeof(uint64_t))
 			throw std::runtime_error("Insufficient data for PacketCloseSession deserialization");
@@ -1649,10 +1622,10 @@ struct PacketError
 
 	PacketError() : error_code(0), message_length(0), error_message() {}
 
-	PacketError(uint32_t code, const std::string &msg)
+	PacketError(uint32_t code, const std::string& msg)
 		: error_code(code),
-		  message_length(static_cast<uint16_t>(msg.length())),
-		  error_message(msg)
+		message_length(static_cast<uint16_t>(msg.length())),
+		error_message(msg)
 	{
 	}
 
@@ -1664,12 +1637,12 @@ struct PacketError
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&error_code),
-					  reinterpret_cast<const uint8_t *>(&error_code) + sizeof(error_code));
+			reinterpret_cast<const uint8_t*>(&error_code),
+			reinterpret_cast<const uint8_t*>(&error_code) + sizeof(error_code));
 
 		buffer.insert(buffer.end(),
-					  reinterpret_cast<const uint8_t *>(&message_length),
-					  reinterpret_cast<const uint8_t *>(&message_length) + sizeof(message_length));
+			reinterpret_cast<const uint8_t*>(&message_length),
+			reinterpret_cast<const uint8_t*>(&message_length) + sizeof(message_length));
 
 		// Serialize variable-size fields
 		buffer.insert(buffer.end(), error_message.begin(), error_message.end());
@@ -1677,7 +1650,7 @@ struct PacketError
 		return buffer;
 	}
 
-	static PacketError deserialize(const uint8_t *data, size_t size)
+	static PacketError deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(error_code) + sizeof(message_length);
@@ -1701,7 +1674,7 @@ struct PacketError
 			throw std::runtime_error("Insufficient data for PacketError deserialization");
 
 		// Deserialize variable-size fields
-		error.error_message.assign(reinterpret_cast<const char *>(data + offset), error.message_length);
+		error.error_message.assign(reinterpret_cast<const char*>(data + offset), error.message_length);
 
 		return error;
 	}

@@ -8,6 +8,8 @@
 
 #include <string>
 #include <memory>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 class FileTransferClient
 {
@@ -23,11 +25,10 @@ public:
 	NetworkConnection& GetConnection() { return *m_connection; }
 	SessionManager& GetSessionManager() { return *m_session_manager; }
 
-
-	bool UploadFile(const std::string& file_path);
+	bool UploadFile(const fs::path& file_path);
 	bool DownloadFile(const std::string& file_name);
 
-	bool UploadDirectory(const std::string& dir_path);
+	bool UploadDirectory(const fs::path& dir_path);
 
 	void CloseSession();
 };

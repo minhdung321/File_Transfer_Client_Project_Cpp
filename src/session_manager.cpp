@@ -1,6 +1,8 @@
 #include <session_manager.h>
 #include <algorithm>
 
+constexpr auto DEBUG_MODE = true;
+
 SessionManager::SessionManager(NetworkConnection& connection)
 	: m_connection(connection), m_session_id{}, m_username(), m_password()
 {
@@ -27,8 +29,11 @@ bool SessionManager::PerformHandshake()
 		throw std::runtime_error("Failed to receive handshake response.");
 	}
 
-	std::cout << "Handshake successful. Server version: " << static_cast<int>(response.server_version) << std::endl;
-	std::cout << "Server message: " << response.message << std::endl;
+	if (DEBUG_MODE)
+	{
+		std::cout << "Handshake successful. Server version: " << static_cast<int>(response.server_version) << std::endl;
+		std::cout << "Server message: " << response.message << std::endl;
+	}
 
 	return true;
 }
@@ -55,18 +60,25 @@ bool SessionManager::PerformAuthentication(const std::string& username, const st
 	if (authResp.authenticated)
 	{
 		std::copy(authResp.session_id, authResp.session_id + 16, m_session_id.begin());
-		std::cout << "Authentication successful." << std::endl;
-		std::cout << "Server message: " << authResp.message << std::endl;
-		std::cout << "Session ID: ";
-		for (int i = 0; i < 16; i++)
+
+		if (DEBUG_MODE)
 		{
-			printf("%02X", m_session_id[i]);
+			std::cout << "Authentication successful." << std::endl;
+			std::cout << "Server message: " << authResp.message << std::endl;
+			std::cout << "Session ID: ";
+			for (int i = 0; i < 16; i++)
+			{
+				printf("%02X", m_session_id[i]);
+			}
+			std::cout << std::endl;
 		}
-		std::cout << std::endl;
 	}
 	else
 	{
-		std::cerr << "Server message: " << authResp.message << std::endl;
+		if (DEBUG_MODE)
+		{
+			std::cerr << "Server message: " << authResp.message << std::endl;
+		}
 	}
 
 	return authResp.authenticated;

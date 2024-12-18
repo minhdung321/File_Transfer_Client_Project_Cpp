@@ -18,23 +18,14 @@ FileTransferClient::FileTransferClient()
 	m_pb_manager = std::make_unique<ProgressBarManager>();
 }
 
-std::string fileTypeToString(fs::file_type type)
+bool FileTransferClient::UploadFile(const std::filesystem::path& file_path)
 {
-	switch (type)
+	// Check if the file exists
+	if (!fs::exists(file_path))
 	{
-	case fs::file_type::regular:
-		return "regular";
-	case fs::file_type::directory:
-		return "directory";
-	case fs::file_type::symlink:
-		return "symlink";
-	default:
-		return "unknown"; // Nếu không phải các loại trên, trả về "unknown"
+		throw std::runtime_error("File does not exist.");
 	}
-}
 
-bool FileTransferClient::UploadFile(const std::string& file_path)
-{
 	// Get the file size
 	std::error_code ec;
 	std::streamsize fileSize = fs::file_size(file_path, ec);
@@ -43,8 +34,6 @@ bool FileTransferClient::UploadFile(const std::string& file_path)
 	{
 		throw std::runtime_error("Failed to get file size.");
 	}
-
-	std::cout << "File size: " << fileSize << " bytes (" << (fileSize / 1024) << " KB)" << std::endl;
 
 	// Open the file and move to the end to get the size
 	std::ifstream file(file_path, std::ios::binary);
@@ -55,7 +44,7 @@ bool FileTransferClient::UploadFile(const std::string& file_path)
 
 	// Calculate the checksum
 	std::cout << "Calculating MD5 checksum..." << std::endl;
-	std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path);
+	std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path.string());
 
 	// Show MD5 checksum
 	std::cout << "MD5 checksum: ";
@@ -67,7 +56,7 @@ bool FileTransferClient::UploadFile(const std::string& file_path)
 	std::cout << std::endl;
 
 	// Prepare the upload request
-	PacketUploadRequest uploadReq(file_path, "File", fileSize, checksum.data());
+	PacketUploadRequest uploadReq(file_path.filename().string(), "File", fileSize, checksum.data());
 
 	if (!m_connection->sendPacket(PacketType::UPLOAD_REQUEST, uploadReq))
 	{
@@ -110,7 +99,7 @@ bool FileTransferClient::UploadFile(const std::string& file_path)
 	const int MAX_RETRIES = 3;
 	const int BASE_TIMEOUT = 1000; // 1 second
 
-	m_pb_manager->AddFile(file_path);
+	m_pb_manager->AddFile(file_path.filename().string());
 
 	for (size_t i = 0; i < chunk_count; i++)
 	{
@@ -187,7 +176,7 @@ bool FileTransferClient::UploadFile(const std::string& file_path)
 				last_sent = total_sent;
 
 				float progress = (static_cast<float>(total_sent) / fileSize) * 100.0f;
-				m_pb_manager->UpdateProgress(file_path, progress);
+				m_pb_manager->UpdateProgress(file_path.filename().string(), progress);
 			}
 			catch (const std::exception& e)
 			{
@@ -225,8 +214,6 @@ bool FileTransferClient::UploadFile(const std::string& file_path)
 
 	return true;
 }
-
-
 
 bool FileTransferClient::DownloadFile(const std::string& file_name)
 {
@@ -390,7 +377,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	return true;
 }
 
-bool FileTransferClient::UploadDirectory(const std::string& dir_path)
+bool FileTransferClient::UploadDirectory(const fs::path& dir_path)
 {
 	// Quét thư mục và lưu các file vào danh sách file entries
 	std::vector<FileEntry> fileEntries;
@@ -417,16 +404,12 @@ bool FileTransferClient::UploadDirectory(const std::string& dir_path)
 			std::string file_path = entry.path().string();
 			std::string file_name = entry.path().filename().string();
 			uint64_t file_size = fs::file_size(entry);
-			uint64_t last_modified = fs::last_write_time(entry).time_since_epoch().count();
 
 			// Tính checksum cho file
 			std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path);
 
-			// Chuyển đổi file_type thành chuỗi hoặc loại dữ liệu khác
-			std::string file_type_str = fileTypeToString(entry.status().type());
-
 			// Tạo đối tượng FileEntry
-			FileEntry fileEntry(file_path, file_name, file_type_str, file_size, last_modified, entry.is_directory());
+			FileEntry fileEntry(file_path, file_name, file_size, entry.is_directory());
 			fileEntries.push_back(fileEntry);
 		}
 	}
@@ -437,6 +420,12 @@ bool FileTransferClient::UploadDirectory(const std::string& dir_path)
 		std::cerr << "No files found in the directory." << std::endl;
 		return false;
 	}
+
+	// Sắp xếp file theo kích thước tăng dần
+	std::stable_sort(fileEntries.begin(), fileEntries.end(),
+		[](const FileEntry& a, const FileEntry& b) {
+			return a.file_size < b.file_size;
+		});
 
 	// Xử lý từng file trong thư mục
 	for (const auto& fileEntry : fileEntries)
@@ -457,8 +446,6 @@ bool FileTransferClient::UploadDirectory(const std::string& dir_path)
 	std::cout << "All files uploaded successfully." << std::endl;
 	return true;
 }
-
-
 
 void FileTransferClient::CloseSession()
 {
