@@ -14,11 +14,18 @@ project ("File_Transfer_Client_Project_Cpp")
 # Include directories
 include_directories("include")
 
+# Get all header files in include folder
+file(GLOB_RECURSE HEADER_FILES "include/*.h" "include/*.hpp")
+
 # Get all source files in src folder
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
 
 # Add source to this project's executable.
-add_executable (${PROJECT_NAME} "File_Transfer_Client_Project_Cpp.cpp" ${SOURCE_FILES})
+add_executable (
+	${PROJECT_NAME} 
+	"File_Transfer_Client_Project_Cpp.cpp" 
+	${HEADER_FILES}
+	${SOURCE_FILES})
 
 # Include OpenSSL libraries
 set (OPENSSL_USE_STATIC_LIBS TRUE)
@@ -29,6 +36,11 @@ set (OPENSSL_LIBRARIES "${OPENSSL_ROOT_DIR}/lib")
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${OPENSSL_INCLUDE})
 target_link_directories(${PROJECT_NAME} PRIVATE ${OPENSSL_LIBRARIES})
+
+if (WIN32)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ws2_32)
+  target_link_libraries(${PROJECT_NAME} PRIVATE Crypt32)
+endif()
 
 # Link OpenSSL libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE libssl libcrypto)
