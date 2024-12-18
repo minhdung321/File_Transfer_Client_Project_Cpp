@@ -27,6 +27,8 @@ public:
 	bool UploadFile(const std::string& file_path);
 	bool DownloadFile(const std::string& file_name);
 
+	bool UploadDirectory(const std::string& dir_path);
+
 	void CloseSession();
 };
 

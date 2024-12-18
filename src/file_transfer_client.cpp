@@ -18,6 +18,21 @@ FileTransferClient::FileTransferClient()
 	m_pb_manager = std::make_unique<ProgressBarManager>();
 }
 
+std::string fileTypeToString(fs::file_type type)
+{
+	switch (type)
+	{
+	case fs::file_type::regular:
+		return "regular";
+	case fs::file_type::directory:
+		return "directory";
+	case fs::file_type::symlink:
+		return "symlink";
+	default:
+		return "unknown"; // Nếu không phải các loại trên, trả về "unknown"
+	}
+}
+
 bool FileTransferClient::UploadFile(const std::string& file_path)
 {
 	// Get the file size
@@ -211,6 +226,8 @@ bool FileTransferClient::UploadFile(const std::string& file_path)
 	return true;
 }
 
+
+
 bool FileTransferClient::DownloadFile(const std::string& file_name)
 {
 	// Prepare the download request
@@ -372,6 +389,76 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 
 	return true;
 }
+
+bool FileTransferClient::UploadDirectory(const std::string& dir_path)
+{
+	// Quét thư mục và lưu các file vào danh sách file entries
+	std::vector<FileEntry> fileEntries;
+	std::error_code ec;
+
+	// Kiểm tra xem thư mục có tồn tại không
+	if (!fs::exists(dir_path) || !fs::is_directory(dir_path))
+	{
+		std::cerr << "Directory does not exist or is not a valid directory: " << dir_path << std::endl;
+		return false;
+	}
+
+	// Quét tất cả các file trong thư mục
+	for (const auto& entry : fs::recursive_directory_iterator(dir_path, fs::directory_options::skip_permission_denied, ec))
+	{
+		if (ec) // Nếu gặp lỗi trong quá trình quét thư mục
+		{
+			std::cerr << "Error scanning directory: " << ec.message() << std::endl;
+			return false;
+		}
+
+		if (fs::is_regular_file(entry)) // Kiểm tra nếu là file
+		{
+			std::string file_path = entry.path().string();
+			std::string file_name = entry.path().filename().string();
+			uint64_t file_size = fs::file_size(entry);
+			uint64_t last_modified = fs::last_write_time(entry).time_since_epoch().count();
+
+			// Tính checksum cho file
+			std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path);
+
+			// Chuyển đổi file_type thành chuỗi hoặc loại dữ liệu khác
+			std::string file_type_str = fileTypeToString(entry.status().type());
+
+			// Tạo đối tượng FileEntry
+			FileEntry fileEntry(file_path, file_name, file_type_str, file_size, last_modified, entry.is_directory());
+			fileEntries.push_back(fileEntry);
+		}
+	}
+
+	// Đảm bảo có file trong thư mục
+	if (fileEntries.empty())
+	{
+		std::cerr << "No files found in the directory." << std::endl;
+		return false;
+	}
+
+	// Xử lý từng file trong thư mục
+	for (const auto& fileEntry : fileEntries)
+	{
+		std::cout << "Uploading file: " << fileEntry.GetFileName() << std::endl;
+
+		// Gọi lại hàm UploadFile để upload từng file
+		std::string file_path = fileEntry.GetFilePath();
+		if (!UploadFile(file_path))
+		{
+			std::cerr << "Failed to upload file: " << fileEntry.GetFileName() << std::endl;
+			return false;
+		}
+
+		std::cout << "File uploaded successfully: " << fileEntry.GetFileName() << std::endl;
+	}
+
+	std::cout << "All files uploaded successfully." << std::endl;
+	return true;
+}
+
+
 
 void FileTransferClient::CloseSession()
 {
