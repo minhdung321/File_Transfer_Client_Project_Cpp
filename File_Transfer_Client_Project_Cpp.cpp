@@ -7,6 +7,8 @@ using namespace cli;
 std::unique_ptr<FileTransferClient> ftClient;
 cli::CLI cliClient{};
 
+static void login_page(); // Forward declaration
+
 static void transfer_page()
 {
 	int opt = cliClient.showTransferMenu();
@@ -25,17 +27,43 @@ static void transfer_page()
 		cliClient.showUploadFolder(ftClient.get());
 		break;
 	}
+	case 4:
+	{
+		// Resume transfer
+		break;
+	}
+	case 5:
+	{
+		ftClient->CloseSession();
+		cliClient.SetState(CLIState::MAIN_MENU);
+		login_page(); // Move to login page
+		break;
+	}
 	default:
 	{
 		ftClient->CloseSession();
+		cliClient.SetState(CLIState::EXIT);
 		cliClient.exitApplication();
 		break;
 	}
 	}
+
+	ftClient->GetProgressBarManager().Cleanup();
+
+	transfer_page(); // Continue to transfer page
 }
 
 static void login_page()
 {
+	ftClient->GetConnection().Disconnect();
+
+	ftClient->GetConnection().Connect("127.0.0.1", 27015);
+
+	if (!ftClient->GetSessionManager().PerformHandshake())
+	{
+		throw std::runtime_error("Failed to connect to server. Please try again.");
+	}
+
 	cliClient.showWelcomeMessage();
 
 	int opt = cliClient.showMainMenu();
@@ -64,13 +92,6 @@ int main()
 	try
 	{
 		ftClient = std::make_unique<FileTransferClient>();
-
-		ftClient->GetConnection().Connect("127.0.0.1", 27015);
-
-		if (!ftClient->GetSessionManager().PerformHandshake())
-		{
-			throw std::runtime_error("Failed to connect to server. Please try again.");
-		}
 
 		login_page(); // Show login page
 	}

@@ -11,6 +11,8 @@ namespace fs = std::filesystem;
 
 constexpr auto CHECKSUM_FLAG = true;
 
+bool is_uploading_directory = false;
+
 FileTransferClient::FileTransferClient()
 {
 	m_connection = std::make_unique<NetworkConnection>();
@@ -18,7 +20,9 @@ FileTransferClient::FileTransferClient()
 	m_pb_manager = std::make_unique<ProgressBarManager>();
 }
 
-bool FileTransferClient::UploadFile(const std::filesystem::path& file_path)
+bool FileTransferClient::UploadFile(
+	const std::filesystem::path& file_path,
+	const std::string& remote_path)
 {
 	// Check if the file exists
 	if (!fs::exists(file_path))
@@ -35,28 +39,11 @@ bool FileTransferClient::UploadFile(const std::filesystem::path& file_path)
 		throw std::runtime_error("Failed to get file size.");
 	}
 
-	// Open the file and move to the end to get the size
-	std::ifstream file(file_path, std::ios::binary);
-	if (!file.is_open())
-	{
-		throw std::runtime_error("Failed to open file.");
-	}
-
 	// Calculate the checksum
-	std::cout << "Calculating MD5 checksum..." << std::endl;
 	std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path.string());
 
-	// Show MD5 checksum
-	std::cout << "MD5 checksum: ";
-	for (int i = 0; i < 16; i++)
-	{
-		printf("%02x", checksum[i]);
-	}
-
-	std::cout << std::endl;
-
 	// Prepare the upload request
-	PacketUploadRequest uploadReq(file_path.filename().string(), "File", fileSize, checksum.data());
+	PacketUploadRequest uploadReq(remote_path, "File", fileSize, checksum.data());
 
 	if (!m_connection->sendPacket(PacketType::UPLOAD_REQUEST, uploadReq))
 	{
@@ -73,19 +60,66 @@ bool FileTransferClient::UploadFile(const std::filesystem::path& file_path)
 
 	if (uploadResp.status == UploadStatus::UPLOAD_ALLOWED)
 	{
-		std::cout << "The server has allowed the upload." << std::endl;
-		std::cout << "File ID of this upload: " << uploadResp.upload_allowed.file_id << std::endl;
-		std::cout << "Chunk size: " << uploadResp.upload_allowed.chunk_size << std::endl;
+		if (!is_uploading_directory)
+		{
+			std::cout << "The server has allowed the upload." << std::endl;
+			std::cout << "File ID of this upload: " << uploadResp.upload_allowed.file_id << std::endl;
+			std::cout << "Chunk size: " << uploadResp.upload_allowed.chunk_size << std::endl;
+		}
 	}
 	else
 	{
 		std::cerr << "The server has denied the upload." << std::endl;
 		std::cerr << "Error message: " << uploadResp.out_of_space.message << std::endl;
+		return false;
+	}
+
+	// Trường hợp đặc biệt với file có kích thước bằng 0
+	if (fileSize == 0)
+	{
+		// Gửi thông báo đặc biệt cho server biết rằng upload đã hoàn tất
+		// Có thể gửi một PacketFileChunk với chunk_size = 0
+		PacketFileChunk fileChunk(
+			uploadResp.upload_allowed.file_id,    // File ID
+			0,                                    // Chunk index
+			0,                                    // Chunk size
+			checksum.data(),                      // Checksum
+			nullptr                               // Không có dữ liệu
+		);
+
+		if (!m_connection->sendPacket(PacketType::FILE_CHUNK, fileChunk))
+		{
+			throw std::runtime_error("Failed to send file chunk for zero-sized file.");
+		}
+
+		PacketHeader ackHeader;
+		PacketFileChunkACK ack;
+
+		if (!m_connection->recvPacket(PacketType::FILE_CHUNK_ACK, ackHeader, ack))
+		{
+			throw std::runtime_error("Failed to receive chunk acknowledgment for zero-sized file.");
+		}
+
+		if (!ack.success ||
+			ack.file_id != uploadResp.upload_allowed.file_id ||
+			ack.chunk_index != 0)
+		{
+			throw std::runtime_error("Chunk ACK validation failed for zero-sized file.");
+		}
+
+		return true;
 	}
 
 	// Upload the file
 	size_t chunk_size = uploadResp.upload_allowed.chunk_size;
 	size_t chunk_count = (fileSize + chunk_size - 1) / chunk_size;
+
+	// Open the file
+	std::ifstream file(file_path, std::ios::binary);
+	if (!file.is_open())
+	{
+		throw std::runtime_error("Failed to open file.");
+	}
 
 	std::cout << "Starting to upload the file in " << chunk_count << " chunks." << std::endl;
 
@@ -206,11 +240,14 @@ bool FileTransferClient::UploadFile(const std::filesystem::path& file_path)
 	auto end_time = std::chrono::steady_clock::now();
 	std::chrono::duration<double> total_duration = end_time - start_time;
 
-	std::cout << std::endl
-		<< "File uploaded successfully." << std::endl;
-	std::cout << "Total time: " << std::fixed << std::setprecision(2) << total_duration.count() << " seconds" << std::endl;
-	double avg_speed = (total_sent * 8.0) / (total_duration.count() * 1000000.0); // Mbps
-	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
+	if (!is_uploading_directory)
+	{
+		std::cout << std::endl
+			<< "File uploaded successfully : " << remote_path << std::endl;
+		std::cout << "Total time: " << std::fixed << std::setprecision(2) << total_duration.count() << " seconds" << std::endl;
+		double avg_speed = (total_sent * 8.0) / (total_duration.count() * 1000000.0); // Mbps
+		std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
+	}
 
 	return true;
 }
@@ -377,7 +414,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	return true;
 }
 
-bool FileTransferClient::UploadDirectory(const fs::path& dir_path)
+bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_files)
 {
 	// Quét thư mục và lưu các file vào danh sách file entries
 	std::vector<FileEntry> fileEntries;
@@ -391,6 +428,9 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path)
 	}
 
 	// Quét tất cả các file trong thư mục
+	FileEntry file_entry{};
+	size_t current_file_count = 0;
+
 	for (const auto& entry : fs::recursive_directory_iterator(dir_path, fs::directory_options::skip_permission_denied, ec))
 	{
 		if (ec) // Nếu gặp lỗi trong quá trình quét thư mục
@@ -401,17 +441,24 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path)
 
 		if (fs::is_regular_file(entry)) // Kiểm tra nếu là file
 		{
-			std::string file_path = entry.path().string();
-			std::string file_name = entry.path().filename().string();
-			uint64_t file_size = fs::file_size(entry);
+			file_entry.absolute_path = entry.path().string();
+			file_entry.relative_path = fs::relative(entry.path(), dir_path.parent_path()).string();
+			file_entry.file_name = entry.path().filename().string();
+			file_entry.file_size = fs::file_size(entry);
 
-			// Tính checksum cho file
-			std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path);
+			std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_entry.absolute_path);
 
-			// Tạo đối tượng FileEntry
-			FileEntry fileEntry(file_path, file_name, file_size, entry.is_directory());
-			fileEntries.push_back(fileEntry);
+			memcpy(file_entry.checksum, checksum.data(), 16);
+
+			fileEntries.emplace_back(file_entry);
+
 		}
+
+		current_file_count++;
+
+		// Hiển thị tiến trình quét thư mục
+		float progress = (static_cast<float>(current_file_count) / total_files) * 100.0f;
+		m_pb_manager->UpdateProgress("Scan Directory", progress);
 	}
 
 	// Đảm bảo có file trong thư mục
@@ -427,23 +474,22 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path)
 			return a.file_size < b.file_size;
 		});
 
-	// Xử lý từng file trong thư mục
+	is_uploading_directory = true;
+
 	for (const auto& fileEntry : fileEntries)
 	{
-		std::cout << "Uploading file: " << fileEntry.GetFileName() << std::endl;
-
-		// Gọi lại hàm UploadFile để upload từng file
-		std::string file_path = fileEntry.GetFilePath();
-		if (!UploadFile(file_path))
+		if (!UploadFile(fileEntry.absolute_path, fileEntry.relative_path))
 		{
-			std::cerr << "Failed to upload file: " << fileEntry.GetFileName() << std::endl;
+			std::cerr << "Failed to upload file: " << fileEntry.relative_path << std::endl;
+			is_uploading_directory = false;
 			return false;
 		}
-
-		std::cout << "File uploaded successfully: " << fileEntry.GetFileName() << std::endl;
 	}
 
-	std::cout << "All files uploaded successfully." << std::endl;
+	std::cout << "> All files uploaded successfully." << std::endl;
+
+	is_uploading_directory = false;
+
 	return true;
 }
 
@@ -457,4 +503,10 @@ void FileTransferClient::CloseSession()
 	}
 
 	std::cout << "Session closed successfully." << std::endl;
+
+	m_pb_manager->Cleanup();
+
+	m_connection->Disconnect();
+
+	std::cout << "Connection closed." << std::endl;
 }

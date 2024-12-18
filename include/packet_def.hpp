@@ -430,7 +430,7 @@ struct PacketAuthenticationResponse
 	}
 };
 
-struct FileEntry
+struct FileEntryDTO
 {
 	uint64_t file_size;		   // File size (in bytes) - (8 bytes)
 	uint8_t is_dir;			   // Is directory (1 byte)
@@ -442,7 +442,7 @@ struct FileEntry
 
 	// Total size: 23 bytes (fixed-size fields) + variable-size fields
 
-	FileEntry() : file_size(0),
+	FileEntryDTO() : file_size(0),
 		is_dir(0),
 		file_path_length(0),
 		file_name_length(0),
@@ -451,7 +451,7 @@ struct FileEntry
 	{
 	}
 
-	FileEntry(const std::string& path, const std::string& name,
+	FileEntryDTO(const std::string& path, const std::string& name,
 		uint64_t size, bool is_directory)
 		: file_size(size),
 		is_dir(is_directory ? 1 : 0),
@@ -497,7 +497,7 @@ struct FileEntry
 		return buffer;
 	}
 
-	static FileEntry deserialize(const uint8_t* data, size_t size)
+	static FileEntryDTO deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint8_t) +
@@ -506,7 +506,7 @@ struct FileEntry
 		if (size < fixed_size)
 			throw std::runtime_error("Insufficient data for FileEntry deserialization");
 
-		FileEntry entry{};
+		FileEntryDTO entry{};
 
 		// Deserialize fixed-size fields
 		memcpy(&entry.file_size, data + offset, sizeof(entry.file_size));
@@ -548,7 +548,7 @@ struct PacketViewCloudResponse
 	uint32_t file_count; // Số lượng file trong không gian lưu trữ của User - 8 bytes
 	uint64_t total_size; // Tổng kích thước của không gian lưu trữ - 8 bytes
 
-	std::vector<uint8_t> serialize(const std::vector<FileEntry>& file_entries)
+	std::vector<uint8_t> serialize(const std::vector<FileEntryDTO>& file_entries)
 	{
 		total_size = 0;
 		file_count = static_cast<uint32_t>(file_entries.size());
@@ -584,7 +584,7 @@ struct PacketViewCloudResponse
 		return buffer;
 	}
 
-	static std::pair<PacketViewCloudResponse, std::vector<FileEntry>> deserialize(const uint8_t* data, size_t size)
+	static std::pair<PacketViewCloudResponse, std::vector<FileEntryDTO>> deserialize(const uint8_t* data, size_t size)
 	{
 		size_t offset = 0;
 		size_t fixed_size = sizeof(uint32_t) + sizeof(uint64_t);
@@ -602,14 +602,14 @@ struct PacketViewCloudResponse
 		offset += sizeof(response.total_size);
 
 		// Deserialize variable-size fields
-		std::vector<FileEntry> entries;
+		std::vector<FileEntryDTO> entries;
 
 		for (uint32_t i = 0; i < response.file_count; ++i)
 		{
 			if (offset >= size)
 				throw std::runtime_error("Unexpected end of data for FileEntry deserialization");
 
-			FileEntry entry = FileEntry::deserialize(data + offset, size - offset);
+			FileEntryDTO entry = FileEntryDTO::deserialize(data + offset, size - offset);
 			entries.emplace_back(entry);
 			offset += entry.GetSize();
 		}

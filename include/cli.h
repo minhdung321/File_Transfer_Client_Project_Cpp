@@ -341,8 +341,6 @@ namespace cli
 				wcout << L"File type: " << fileType << L"\n";
 				wcout << L"File size: " << fileSize << L" bytes (" << (fileSize / 1024) << L" KB)\n";
 
-				waitForEnter();
-
 				if (!confirmAction("Do you want to upload this file?"))
 				{
 					showTransferMenu(); // Return to transfer menu
@@ -354,7 +352,7 @@ namespace cli
 				cout << "> Uploading file...\n\n";
 
 				// Upload file
-				if (client->UploadFile(filePath))
+				if (client->UploadFile(filePath, filePath.filename().string()))
 				{
 					cout << "File uploaded successfully.\n";
 				}
@@ -370,7 +368,7 @@ namespace cli
 
 			waitForEnter();
 
-			showTransferMenu(); // Return to transfer menu
+			state = CLIState::SESSION;
 		}
 
 		// {folderPath, totalItems, totalSize}
@@ -510,8 +508,6 @@ namespace cli
 				wcout << L"Total items: " << totalItems << L"\n";
 				wcout << L"Total size: " << totalSize << L" bytes (" << (totalSize / 1024) << L" KB)\n";
 
-				waitForEnter();
-
 				if (!confirmAction("Do you want to upload this folder?"))
 				{
 					showTransferMenu(); // Return to transfer menu
@@ -523,7 +519,7 @@ namespace cli
 				cout << "> Uploading folder...\n\n";
 
 				// Upload folder
-				if (client->UploadDirectory(folderPath))
+				if (client->UploadDirectory(folderPath, totalItems))
 				{
 					cout << "Folder uploaded successfully.\n";
 				}
@@ -536,6 +532,10 @@ namespace cli
 			{
 				cerr << "Error: " << e.what() << endl;
 			}
+
+			waitForEnter();
+
+			state = CLIState::SESSION;
 		}
 
 	};

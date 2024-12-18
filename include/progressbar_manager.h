@@ -1,4 +1,4 @@
-#ifndef PROGRESSBAR_MANAGER_H
+﻿#ifndef PROGRESSBAR_MANAGER_H
 #define PROGRESSBAR_MANAGER_H
 
 #include <iostream>
@@ -22,7 +22,11 @@ private:
 	HANDLE hConsole;
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
 
-	static constexpr auto DEFAULT_MAX_FILE_NAME_LEN = 20;
+	COORD m_start_pos;
+	bool m_initialized = false;
+	int m_last_num_files = 0;
+
+	static constexpr auto DEFAULT_MAX_FILE_NAME_LEN = 30;
 
 public:
 	ProgressBarManager()
@@ -36,6 +40,18 @@ public:
 		std::basic_string truncated_name = TruncateFileName(file_name);
 		m_files_progress[file_name] = { truncated_name, 0.0f };
 		m_file_list.push_back(file_name);
+
+		// Nếu chưa khởi tạo thì lưu lại vị trí bắt đầu
+		if (!m_initialized)
+		{
+			// Lưu lại vị trí bắt đầu cho vùng thanh tiến trình
+			CONSOLE_SCREEN_BUFFER_INFO csbi_current;
+			GetConsoleScreenBufferInfo(hConsole, &csbi_current);
+			m_start_pos = csbi_current.dwCursorPosition;
+			m_initialized = true;
+		}
+
+		redrawProgressBars();
 	};
 
 	void UpdateProgress(const std::string& file_name, float progress)
@@ -45,51 +61,84 @@ public:
 			m_files_progress[file_name].progress = progress;
 			redrawProgressBars();
 		}
+
+		if (progress >= 100.0f)
+		{
+			m_files_progress.erase(file_name);
+			m_file_list.erase(std::remove(m_file_list.begin(), m_file_list.end(), file_name), m_file_list.end());
+			redrawProgressBars();
+		}
+	}
+
+	void Cleanup()
+	{
+		// Xóa vùng thanh tiến trình
+		COORD end_pos = m_start_pos;
+		end_pos.Y += static_cast<SHORT>(m_file_list.size());
+		SetConsoleCursorPosition(hConsole, end_pos);
+		std::cout << std::string(csbi.dwSize.X, ' ');
+
+		m_files_progress.clear();
 	}
 
 private:
 	void redrawProgressBars()
 	{
-		// Save the current cursor position
+		// Lưu vị trí con trỏ hiện tại
 		CONSOLE_SCREEN_BUFFER_INFO csbi_current;
 		GetConsoleScreenBufferInfo(hConsole, &csbi_current);
 
-		// Move cursor to the start of progress bars
-		COORD start_pos = csbi.dwCursorPosition;
-		start_pos.Y -= static_cast<SHORT>(m_file_list.size());
-		SetConsoleCursorPosition(hConsole, start_pos);
+		// Di chuyển con trỏ đến vị trí bắt đầu của thanh tiến trình
+		SetConsoleCursorPosition(hConsole, m_start_pos);
 
-		// Redraw each progress bar
+		// Vẽ lại các thanh tiến trình
 		for (const auto& file_name : m_file_list) {
 			const FileProgress& fp = m_files_progress[file_name];
 			drawProgressBar(fp.file_name, fp.progress);
 		}
 
-		// Restore cursor position
-		SetConsoleCursorPosition(hConsole, csbi_current.dwCursorPosition);
+		// Di chuyển con trỏ trở lại vị trí sau vùng thanh tiến trình
+		COORD end_pos = m_start_pos;
+		end_pos.Y += static_cast<SHORT>(m_file_list.size());
+		SetConsoleCursorPosition(hConsole, end_pos);
 	}
 
 	void drawProgressBar(const std::string& file_name, float progress, int barWidth = 30)
 	{
+		// Di chuyển con trỏ đến đầu dòng
 		std::cout << "\r";
 
-		// Prepare the file name column (max 20 characters)
+		// Xóa nội dung dòng hiện tại
+		std::cout << std::string(csbi.dwSize.X, ' ');
+
+		// Di chuyển con trỏ về đầu dòng lần nữa
+		std::cout << "\r";
+
+		// Chuẩn bị tên tệp tin (tối đa 30 ký tự)
 		std::string display_name = file_name;
-		display_name.resize(20, ' ');
+		if (display_name.length() > DEFAULT_MAX_FILE_NAME_LEN)
+		{
+			display_name = display_name.substr(0, DEFAULT_MAX_FILE_NAME_LEN - 3) + "...";
+		}
+		else
+		{
+			display_name.resize(DEFAULT_MAX_FILE_NAME_LEN, ' ');
+		}
 
 		std::cout << display_name << " [";
 
 		int pos = static_cast<int>(barWidth * progress / 100.0f);
 		for (int i = 0; i < barWidth; ++i) {
 			if (i < pos)
-				std::cout << (char)254; // Square character
-			else if (i == pos)
-				std::cout << ">";
+				std::cout << (char)254; // Full block character
 			else
 				std::cout << " ";
 		}
 
-		std::cout << "] " << std::fixed << std::setprecision(2) << progress << "%   \n";
+		std::cout << "] " << std::fixed << std::setprecision(2) << progress << "%";
+
+		// Đảm bảo con trỏ ở dòng tiếp theo
+		std::cout << std::endl;
 	}
 
 	std::string TruncateFileName(const std::string& file_name)
