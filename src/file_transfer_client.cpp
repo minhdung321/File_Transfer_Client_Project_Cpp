@@ -496,6 +496,157 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 	return true;
 }
 
+std::vector<size_t> FileTransferClient::LoadUploadedChunks(const std::string& file_path)
+{
+	std::vector<size_t> uploaded_chunks;
+	std::ifstream status_file(file_path + ".status");
+
+	if (status_file.is_open())
+	{
+		size_t chunk_index;
+		while (status_file >> chunk_index)
+		{
+			uploaded_chunks.push_back(chunk_index);
+		}
+	}
+
+	return uploaded_chunks;
+}
+
+void FileTransferClient::SaveUploadedChunk(const std::string& file_path, size_t chunk_index)
+{
+	std::ofstream status_file(file_path + ".status", std::ios::app);
+	if (status_file.is_open())
+	{
+		status_file << chunk_index << std::endl;
+	}
+}
+
+bool FileTransferClient::ResumeUpload(const std::string& file_path)
+{
+	std::error_code ec;
+	std::streamsize fileSize = fs::file_size(file_path, ec);
+
+	if (ec)
+	{
+		std::cerr << "Failed to get file size." << std::endl;
+		return false;
+	}
+
+	// Kiểm tra trạng thái upload đã lưu (nếu có) và tìm chunk đã upload
+	std::vector<size_t> uploaded_chunks = LoadUploadedChunks(file_path);
+
+	// Nếu không có chunk đã upload, bắt đầu upload từ đầu
+	if (uploaded_chunks.empty())
+	{
+		// Cung cấp remote_path cùng với file_path để gọi UploadFile
+		std::string remote_path = file_path;  // Bạn có thể chỉnh sửa remote_path nếu cần
+		return UploadFile(file_path, remote_path);
+	}
+
+	// Đã upload một số chunk, tiếp tục từ chunk tiếp theo
+	size_t resume_chunk_index = uploaded_chunks.back() + 1;
+	std::cout << "Resuming upload from chunk " << resume_chunk_index << std::endl;
+
+	// Mở file và tiếp tục upload từ chunk đã dừng lại
+	std::ifstream file(file_path, std::ios::binary);
+	if (!file.is_open())
+	{
+		std::cerr << "Failed to open file." << std::endl;
+		return false;
+	}
+
+	// Gửi lại yêu cầu upload nếu chưa gửi (phục vụ cho resume)
+	std::error_code upload_ec;
+	std::streamsize chunk_size = 1024 * 1024; // Kích thước mỗi chunk
+	size_t total_sent = resume_chunk_index * chunk_size;
+	file.seekg(total_sent);
+
+	PacketUploadRequest uploadReq(file_path, "File", fileSize, md5Handler->calcCheckSumFile(file_path).data());
+	if (!m_connection->sendPacket(PacketType::UPLOAD_REQUEST, uploadReq))
+	{
+		std::cerr << "Failed to send upload request." << std::endl;
+		return false;
+	}
+
+	PacketHeader header;
+	PacketUploadResponse uploadResp;
+	if (!m_connection->recvPacket(PacketType::UPLOAD_RESPONSE, header, uploadResp))
+	{
+		std::cerr << "Failed to receive upload response." << std::endl;
+		return false;
+	}
+
+	if (uploadResp.status != UploadStatus::UPLOAD_ALLOWED)
+	{
+		std::cerr << "Server has denied upload. Error: " << uploadResp.out_of_space.message << std::endl;
+		return false;
+	}
+
+	size_t chunk_count = (fileSize + chunk_size - 1) / chunk_size;
+
+	for (size_t i = resume_chunk_index; i < chunk_count; i++)
+	{
+		size_t current_chunk_size = std::min<size_t>(chunk_size, fileSize - total_sent);
+		std::vector<uint8_t> chunk_data(current_chunk_size);
+
+		if (!file.read(reinterpret_cast<char*>(chunk_data.data()), current_chunk_size))
+		{
+			std::cerr << "Failed to read file chunk." << std::endl;
+			return false;
+		}
+
+		// Tính checksum cho chunk nếu cần
+		std::vector<uint8_t> chunk_checksum;
+		if (CHECKSUM_FLAG)
+		{
+			chunk_checksum = md5Handler->calcCheckSum(chunk_data);
+		}
+
+		// Tạo và gửi gói chunk
+		PacketFileChunk fileChunk(
+			uploadResp.upload_allowed.file_id,
+			static_cast<uint32_t>(i),
+			static_cast<uint32_t>(current_chunk_size),
+			chunk_checksum.data(),
+			reinterpret_cast<uint8_t*>(chunk_data.data())
+		);
+
+		if (!m_connection->sendPacket(PacketType::FILE_CHUNK, fileChunk))
+		{
+			std::cerr << "Failed to send file chunk." << std::endl;
+			return false;
+		}
+
+		// Nhận ACK
+		PacketHeader ackHeader;
+		PacketFileChunkACK ack;
+		if (!m_connection->recvPacket(PacketType::FILE_CHUNK_ACK, ackHeader, ack))
+		{
+			std::cerr << "Failed to receive chunk acknowledgment." << std::endl;
+			return false;
+		}
+
+		if (!ack.success || ack.file_id != uploadResp.upload_allowed.file_id || ack.chunk_index != i)
+		{
+			std::cerr << "Chunk ACK validation failed." << std::endl;
+			return false;
+		}
+
+		total_sent += current_chunk_size;
+		SaveUploadedChunk(file_path, i);  // Lưu lại chunk đã upload
+
+		float progress = (static_cast<float>(total_sent) / fileSize) * 100.0f;
+		m_pb_manager->UpdateProgress(file_path, progress);
+
+		std::cout << "Chunk " << i << " uploaded successfully." << std::endl;
+	}
+
+	std::cout << "File upload resumed and completed successfully." << std::endl;
+	return true;
+}
+
+
 void FileTransferClient::CloseSession()
 {
 	PacketCloseSession closeReq = PacketCloseSession();
