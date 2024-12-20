@@ -57,7 +57,8 @@ private:
 			relative_path(rel_path),
 			file_name(name),
 			file_size(size),
-			is_directory(is_dir)
+			is_directory(is_dir),
+			checksum()
 		{
 			if (checksum)
 			{

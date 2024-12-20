@@ -53,7 +53,6 @@ enum class PacketType : uint8_t
 	ERR_PACKET	   // Error packet
 };
 
-#pragma pack(push, 1) // No padding
 struct PacketPrefix
 {
 	uint32_t encrypted_packet_length; // Encrypted packet length (4 bytes)
@@ -135,9 +134,9 @@ struct PacketHeader
 		return const_cast<uint8_t*>(session_id);
 	}
 
-	bool ValidateSessionID(const uint8_t* session_id) const
+	bool ValidateSessionID(const uint8_t* session_id_) const
 	{
-		return memcmp(this->session_id, session_id, 16) == 0;
+		return memcmp(this->session_id, session_id_, 16) == 0;
 	}
 };
 
@@ -367,20 +366,29 @@ struct PacketAuthenticationRequest
 	}
 };
 
-struct PacketAuthenticationResponse
+struct alignas(8) PacketAuthenticationResponse
 {
 	bool authenticated;		 // Authentication status (true if successful) - (1 byte)
 	uint8_t session_id[16];	 // Server will generate a session ID for the client and send it back - (16 bytes)
 	uint16_t message_length; // Message length (2 bytes)
+	char padding[5]; 	 // Padding to align the next field
 	std::string message;	 // Message (e.g., "Authentication successful")
 	// This message can be used for debugging purposes
 
-	PacketAuthenticationResponse() : authenticated(false), session_id{ 0 }, message_length(0), message() {}
+	PacketAuthenticationResponse()
+		: authenticated(false),
+		session_id{ 0 },
+		message_length(0),
+		padding{ 0 },
+		message()
+	{
+	}
 
 	PacketAuthenticationResponse(bool auth, const uint8_t* session_id, const std::string& msg)
 		: authenticated(auth),
 		session_id{ 0 },
 		message_length(static_cast<uint16_t>(msg.length())),
+		padding{ 0 },
 		message(msg)
 	{
 		if (session_id)
@@ -873,12 +881,12 @@ struct PacketUploadDirRequest
 
 	std::vector<uint8_t> serialize() const
 	{
-		size_t total_size = sizeof(file_count) + sizeof(total_size) +
+		size_t l_total_size = sizeof(file_count) + sizeof(l_total_size) +
 			sizeof(checksum_flag) + sizeof(dir_path_length) +
 			dir_path.length();
 
 		std::vector<uint8_t> buffer;
-		buffer.reserve(total_size);
+		buffer.reserve(l_total_size);
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
@@ -886,8 +894,8 @@ struct PacketUploadDirRequest
 			reinterpret_cast<const uint8_t*>(&file_count) + sizeof(file_count));
 
 		buffer.insert(buffer.end(),
-			reinterpret_cast<const uint8_t*>(&total_size),
-			reinterpret_cast<const uint8_t*>(&total_size) + sizeof(total_size));
+			reinterpret_cast<const uint8_t*>(&l_total_size),
+			reinterpret_cast<const uint8_t*>(&l_total_size) + sizeof(l_total_size));
 
 		buffer.push_back(checksum_flag);
 
@@ -1141,7 +1149,9 @@ struct PacketDownloadResponse
 
 	PacketDownloadResponse() : status(DownloadStatus::FILE_FOUND), file_info{ 0, 0, 0 } {}
 
-	PacketDownloadResponse(DownloadStatus status, uint32_t file_id, uint64_t size, uint32_t chunk_size, const uint8_t* checksum)
+	PacketDownloadResponse(DownloadStatus status,
+		uint32_t file_id, uint64_t size,
+		uint32_t chunk_size, const uint8_t* checksum)
 		: status(status)
 	{
 		if (status == DownloadStatus::FILE_FOUND)
@@ -1679,6 +1689,5 @@ struct PacketError
 		return error;
 	}
 };
-#pragma pack(pop)
 
 #endif // !PACKET_DEF_H

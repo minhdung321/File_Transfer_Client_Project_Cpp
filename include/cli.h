@@ -522,7 +522,7 @@ namespace cli
 				// Upload folder
 				if (client->UploadDirectory(folderPath, totalItems))
 				{
-					cout << "Folder uploaded successfully.\n";
+					cout << "\nFolder uploaded successfully.\n";
 				}
 				else
 				{
@@ -535,6 +535,8 @@ namespace cli
 			}
 
 			waitForEnter();
+
+			client->GetProgressBarManager().Cleanup();
 
 			state = CLIState::SESSION;
 		}

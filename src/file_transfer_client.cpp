@@ -452,7 +452,6 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 			memcpy(file_entry.checksum, checksum.data(), 16);
 
 			fileEntries.emplace_back(file_entry);
-
 		}
 
 		current_file_count++;
@@ -461,6 +460,8 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 		float progress = (static_cast<float>(current_file_count) / total_files) * 100.0f;
 		m_pb_manager->UpdateProgress("Scan Directory", progress);
 	}
+
+	m_pb_manager->Cleanup();
 
 	// Đảm bảo có file trong thư mục
 	if (fileEntries.empty())
@@ -477,19 +478,20 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 
 	is_uploading_directory = true;
 
+	m_pb_manager->ShowTotalProgress(true);
+
+	current_file_count = 0;
+
 	for (const auto& fileEntry : fileEntries)
 	{
-		try
+		if (!UploadFile(fileEntry.absolute_path, fileEntry.relative_path))
 		{
-			UploadFile(fileEntry.absolute_path, fileEntry.relative_path);
-		}
-		catch (const std::exception& e)
-		{
+			std::cerr << "Failed to upload file: " << fileEntry.relative_path << std::endl;
 			continue;
 		}
-	}
 
-	std::cout << "> All files uploaded successfully." << std::endl;
+		current_file_count++;
+	}
 
 	is_uploading_directory = false;
 
