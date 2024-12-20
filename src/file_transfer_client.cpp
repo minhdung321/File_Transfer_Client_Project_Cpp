@@ -74,6 +74,17 @@ bool FileTransferClient::UploadFile(
 		return false;
 	}
 
+	// Tiếp tục upload từ chunk đã gửi (nếu có)
+	size_t last_sent_chunk_index = 0;
+	if (std::filesystem::exists("upload_state.txt")) {
+		std::ifstream state_file("upload_state.txt", std::ios::binary);
+		state_file.read(reinterpret_cast<char*>(&uploadResp.upload_allowed.file_id), sizeof(uploadResp.upload_allowed.file_id));
+		state_file.read(reinterpret_cast<char*>(&last_sent_chunk_index), sizeof(last_sent_chunk_index));
+		state_file.close();
+
+		std::cout << "Resuming upload from chunk " << last_sent_chunk_index << std::endl;
+	}
+
 	// Trường hợp đặc biệt với file có kích thước bằng 0
 	if (fileSize == 0)
 	{
@@ -211,6 +222,12 @@ bool FileTransferClient::UploadFile(
 
 				float progress = (static_cast<float>(total_sent) / fileSize) * 100.0f;
 				m_pb_manager->UpdateProgress(file_path.filename().string(), progress);
+
+				// Lưu trạng thái upload 
+				std::ofstream state_file("upload_state.txt", std::ios::binary);
+				state_file.write(reinterpret_cast<const char*>(&uploadResp.upload_allowed.file_id), sizeof(uploadResp.upload_allowed.file_id));
+				state_file.write(reinterpret_cast<const char*>(&i), sizeof(i));
+				state_file.close();
 			}
 			catch (const std::exception& e)
 			{
@@ -540,7 +557,7 @@ bool FileTransferClient::ResumeUpload(const std::string& file_path)
 	if (uploaded_chunks.empty())
 	{
 		// Cung cấp remote_path cùng với file_path để gọi UploadFile
-		std::string remote_path = file_path;  // Bạn có thể chỉnh sửa remote_path nếu cần
+		std::string remote_path = file_path;  
 		return UploadFile(file_path, remote_path);
 	}
 

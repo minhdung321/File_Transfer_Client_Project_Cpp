@@ -342,6 +342,7 @@ namespace cli
 				wcout << L"File type: " << fileType << L"\n";
 				wcout << L"File size: " << fileSize << L" bytes (" << (fileSize / 1024) << L" KB)\n";
 
+				
 				if (!confirmAction("Do you want to upload this file?"))
 				{
 					showTransferMenu(); // Return to transfer menu
@@ -538,6 +539,51 @@ namespace cli
 
 			state = CLIState::SESSION;
 		}
+
+		void showResume(FileTransferClient* client) {
+			if (!client) {
+				throw std::runtime_error("Invalid client instance.");
+			}
+
+			system("cls");
+			cout << "===============================================\n";
+			cout << "||                                           ||\n";
+			cout << "||             RESUME UPLOAD FILE            ||\n";
+			cout << "||                                           ||\n";
+			cout << "===============================================\n";
+
+			fs::path filePath;
+
+			try {
+				cout << "Enter the file path to resume upload: ";
+				std::string inputPath;
+				std::getline(std::cin, inputPath);
+
+				filePath = fs::path(inputPath);
+				if (!fs::exists(filePath)) {
+					cerr << "Error: File does not exist.\n";
+					waitForEnter();
+					return;
+				}
+
+				if (!confirmAction("Do you want to resume upload this file?")) {
+					return;
+				}
+				system("cls");
+				cout << "\n===============================================\n";
+				cout << "> Resuming upload file...\n\n";
+				if (client->ResumeUpload(filePath.string())) {
+					cout << "File uploaded successfully.\n";
+				}
+				else {
+					cerr << "Failed to upload file.\n";
+				}
+			}
+			catch (const std::exception& e) {
+				cerr << "Error: " << e.what() << endl;
+			}
+			waitForEnter();
+		} 
 
 	};
 }
