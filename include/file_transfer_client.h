@@ -31,6 +31,11 @@ public:
 
 	bool UploadDirectory(const fs::path& dir_path, size_t total_files);
 
+
+	std::vector<size_t> LoadUploadedChunks(const std::string& file_path);
+	void SaveUploadedChunk(const std::string& file_path, size_t chunk_index);
+	bool ResumeUpload(const std::string& file_path);
+
 	void CloseSession();
 
 private:
