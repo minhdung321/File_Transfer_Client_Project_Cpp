@@ -30,6 +30,8 @@ static void transfer_page()
 	case 4:
 	{
 		// Resume transfer
+		cliClient.SetState(CLIState::RESUME);
+		cliClient.showResume(ftClient.get());
 		break;
 	}
 	case 5:

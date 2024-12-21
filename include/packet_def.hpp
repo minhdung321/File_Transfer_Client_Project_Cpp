@@ -40,7 +40,7 @@ enum class PacketType : uint8_t
 	DOWNLOAD_REQUEST,  // Download a file
 	DOWNLOAD_RESPONSE, // Download response
 
-	RESUME_REQUEST,	 // Resume upload request
+	RESUME_UPLOAD_REQUEST,	 // Resume upload request
 	RESUME_RESPONSE, // Resume upload response
 
 	FILE_CHUNK,		// File chunk
