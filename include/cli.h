@@ -1,4 +1,4 @@
-#ifndef CLI_H
+﻿#ifndef CLI_H
 #define CLI_H
 
 #define UNICODE
@@ -540,8 +540,10 @@ namespace cli
 			state = CLIState::SESSION;
 		}
 
-		void showResume(FileTransferClient* client) {
-			if (!client) {
+		void showResumeUpload(FileTransferClient* client)
+		{
+			if (!client || state != CLIState::RESUME)
+			{
 				throw std::runtime_error("Invalid client instance.");
 			}
 
@@ -551,41 +553,99 @@ namespace cli
 			cout << "||             RESUME UPLOAD FILE            ||\n";
 			cout << "||                                           ||\n";
 			cout << "===============================================\n";
+			cout << "> Select a file to resume upload...\n\n";
 
 			fs::path filePath;
+			wstring fileName, fileType;
+			size_t fileSize;
 
 			try {
-				cout << "Enter the file path to resume upload: ";
-				std::string inputPath;
-				std::getline(std::cin, inputPath);
+				tie(filePath, fileName, fileType, fileSize) = OpenFileDialog();
 
-				filePath = fs::path(inputPath);
-				if (!fs::exists(filePath)) {
-					cerr << "Error: File does not exist.\n";
-					waitForEnter();
+				wcout << L"Selected file: " << fileName << L"\n";
+				wcout << L"File path: " << filePath << L"\n";
+				wcout << L"File type: " << fileType << L"\n";
+				wcout << L"File size: " << fileSize << L" bytes (" << (fileSize / 1024) << L" KB)\n";
+
+				if (!confirmAction("Do you want to resume upload this file?"))
+				{
 					return;
 				}
 
-				if (!confirmAction("Do you want to resume upload this file?")) {
-					return;
-				}
 				system("cls");
 				cout << "\n===============================================\n";
 				cout << "> Resuming upload file...\n\n";
-				if (client->ResumeUpload(filePath.string())) {
+
+				if (client->ResumeUpload(filePath.string()))
+				{
 					cout << "File uploaded successfully.\n";
 				}
-				else {
+				else
+				{
 					cerr << "Failed to upload file.\n";
 				}
 			}
 			catch (const std::exception& e) {
 				cerr << "Error: " << e.what() << endl;
 			}
-			waitForEnter();
-		} 
 
-	};
-}
+			waitForEnter();
+
+			state = CLIState::SESSION;
+		}
+
+		void showResume(FileTransferClient* client) 
+		{
+			if (!client || state != CLIState::RESUME)
+			{
+				throw std::runtime_error("Invalid client instance.");
+			}
+
+			system("cls");
+
+			cout << "===============================================\n";
+			cout << "||                                           ||\n";
+			cout << "||             RESUME TRANSFER               ||\n";
+			cout << "||                                           ||\n";
+			cout << "===============================================\n";
+
+			cout << "1. Resume upload file\n";
+			cout << "2. Resume download file\n";
+			cout << "3. Back\n";
+
+			int choice = 0;
+
+			cout << "Enter your choice: ";
+			cin >> choice;
+			cin.ignore((numeric_limits<streamsize>::max)(), '\n');
+
+			if (choice < 1 || choice > 3)
+			{
+				cout << "Invalid choice. Please try again.\n";
+				waitForEnter();
+
+				return showResume(client);
+			}
+
+			switch (choice)
+			{
+			case 1:
+				state = CLIState::RESUME;
+				showResumeUpload(client);
+				break;
+			case 2:
+				state = CLIState::RESUME;
+				// showResumeDownload(client); Khoa bổ sung sau
+				state = CLIState::SESSION;
+				break;
+			case 3:
+				state = CLIState::SESSION;
+				break;
+			}
+
+			return;
+		}
+	}; // class CLI
+} // namespace cli
 
 #endif // !CLI_H

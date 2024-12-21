@@ -40,7 +40,7 @@ bool FileTransferClient::UploadFile(
 	}
 
 	// Calculate the checksum
-	std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path.string());
+	std::vector<uint8_t> checksum = md5_handler->calcCheckSumFile(file_path.string());
 
 	// Prepare the upload request
 	PacketUploadRequest uploadReq(remote_path, "File", fileSize, checksum.data());
@@ -72,17 +72,6 @@ bool FileTransferClient::UploadFile(
 		std::cerr << "The server has denied the upload." << std::endl;
 		std::cerr << "Error message: " << uploadResp.out_of_space.message << std::endl;
 		return false;
-	}
-
-	// Tiếp tục upload từ chunk đã gửi (nếu có)
-	size_t last_sent_chunk_index = 0;
-	if (std::filesystem::exists("upload_state.txt")) {
-		std::ifstream state_file("upload_state.txt", std::ios::binary);
-		state_file.read(reinterpret_cast<char*>(&uploadResp.upload_allowed.file_id), sizeof(uploadResp.upload_allowed.file_id));
-		state_file.read(reinterpret_cast<char*>(&last_sent_chunk_index), sizeof(last_sent_chunk_index));
-		state_file.close();
-
-		std::cout << "Resuming upload from chunk " << last_sent_chunk_index << std::endl;
 	}
 
 	// Trường hợp đặc biệt với file có kích thước bằng 0
@@ -121,9 +110,11 @@ bool FileTransferClient::UploadFile(
 		return true;
 	}
 
+	const std::string file_ckp = file_path.stem().string() + ".ckp"; // Checkpoint file
+
 	// Upload the file
 	size_t chunk_size = uploadResp.upload_allowed.chunk_size;
-	size_t chunk_count = (fileSize + chunk_size - 1) / chunk_size;
+	size_t chunk_count = ((fileSize + chunk_size - 1) / chunk_size);
 
 	// Open the file
 	std::ifstream file(file_path, std::ios::binary);
@@ -132,7 +123,10 @@ bool FileTransferClient::UploadFile(
 		throw std::runtime_error("Failed to open file.");
 	}
 
-	std::cout << "Starting to upload the file in " << chunk_count << " chunks." << std::endl;
+	if (!is_uploading_directory)
+	{
+		std::cout << "Starting to upload the file in " << chunk_count << " chunks." << std::endl;
+	}
 
 	auto start_time = std::chrono::steady_clock::now();
 	auto last_time = start_time;
@@ -168,7 +162,7 @@ bool FileTransferClient::UploadFile(
 				std::vector<uint8_t> checksum;
 				if (CHECKSUM_FLAG)
 				{
-					checksum = md5Handler->calcCheckSum(chunk_data);
+					checksum = md5_handler->calcCheckSum(chunk_data);
 				}
 
 				// Prepare the file chunk packet
@@ -224,9 +218,9 @@ bool FileTransferClient::UploadFile(
 				m_pb_manager->UpdateProgress(file_path.filename().string(), progress);
 
 				// Lưu trạng thái upload 
-				std::ofstream state_file("upload_state.txt", std::ios::binary);
+				std::ofstream state_file(file_ckp, std::ios::binary | std::ios::trunc);
 				state_file.write(reinterpret_cast<const char*>(&uploadResp.upload_allowed.file_id), sizeof(uploadResp.upload_allowed.file_id));
-				state_file.write(reinterpret_cast<const char*>(&i), sizeof(i));
+				state_file.write(reinterpret_cast<const char*>(&chunk_size), sizeof(chunk_size));
 				state_file.close();
 			}
 			catch (const std::exception& e)
@@ -253,6 +247,14 @@ bool FileTransferClient::UploadFile(
 			return false;
 		}
 	}
+
+	// Đóng checkpoint file
+	if (fs::exists(file_ckp))
+	{
+		fs::remove(file_ckp);
+	}
+
+	file.close(); // Đóng file sau khi upload xong
 
 	auto end_time = std::chrono::steady_clock::now();
 	std::chrono::duration<double> total_duration = end_time - start_time;
@@ -340,7 +342,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 		bool checksum_valid = true;
 		if (CHECKSUM_FLAG)
 		{
-			std::vector<uint8_t> chunk_checksum = md5Handler->calcCheckSum(fileChunk.data);
+			std::vector<uint8_t> chunk_checksum = md5_handler->calcCheckSum(fileChunk.data);
 
 			if (memcmp(chunk_checksum.data(), fileChunk.checksum, 16) != 0)
 			{
@@ -410,7 +412,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	// Validate checksum
 	if (CHECKSUM_FLAG)
 	{
-		std::vector<uint8_t> file_checksum = md5Handler->calcCheckSumFile(file_name);
+		std::vector<uint8_t> file_checksum = md5_handler->calcCheckSumFile(file_name);
 		if (memcmp(file_checksum.data(), checksum.data(), 16) != 0)
 		{
 			std::cerr << "Checksum mismatch in the downloaded file." << std::endl;
@@ -464,7 +466,7 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 			file_entry.file_name = entry.path().filename().string();
 			file_entry.file_size = fs::file_size(entry);
 
-			std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_entry.absolute_path);
+			std::vector<uint8_t> checksum = md5_handler->calcCheckSumFile(file_entry.absolute_path);
 
 			memcpy(file_entry.checksum, checksum.data(), 16);
 
@@ -513,34 +515,16 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 	return true;
 }
 
-std::vector<size_t> FileTransferClient::LoadUploadedChunks(const std::string& file_path)
+bool FileTransferClient::ResumeUpload(const fs::path& file_path)
 {
-	std::vector<size_t> uploaded_chunks;
-	std::ifstream status_file(file_path + ".status");
-
-	if (status_file.is_open())
+	// Check if the file exists
+	if (!fs::exists(file_path))
 	{
-		size_t chunk_index;
-		while (status_file >> chunk_index)
-		{
-			uploaded_chunks.push_back(chunk_index);
-		}
+		std::cerr << "File does not exist." << std::endl;
+		return false;
 	}
 
-	return uploaded_chunks;
-}
-
-void FileTransferClient::SaveUploadedChunk(const std::string& file_path, size_t chunk_index)
-{
-	std::ofstream status_file(file_path + ".status", std::ios::app);
-	if (status_file.is_open())
-	{
-		status_file << chunk_index << std::endl;
-	}
-}
-
-bool FileTransferClient::ResumeUpload(const std::string& file_path)
-{
+	// Get the file size
 	std::error_code ec;
 	std::streamsize fileSize = fs::file_size(file_path, ec);
 
@@ -550,119 +534,209 @@ bool FileTransferClient::ResumeUpload(const std::string& file_path)
 		return false;
 	}
 
-	// Kiểm tra trạng thái upload đã lưu (nếu có) và tìm chunk đã upload
-	std::vector<size_t> uploaded_chunks = LoadUploadedChunks(file_path);
+	// Get checkpoint file
+	const std::string file_ckp = file_path.stem().string() + ".ckp";
 
-	// Nếu không có chunk đã upload, bắt đầu upload từ đầu
-	if (uploaded_chunks.empty())
+	if (!fs::exists(file_ckp))
 	{
-		// Cung cấp remote_path cùng với file_path để gọi UploadFile
-		std::string remote_path = file_path;  
-		return UploadFile(file_path, remote_path);
-	}
-
-	// Đã upload một số chunk, tiếp tục từ chunk tiếp theo
-	size_t resume_chunk_index = uploaded_chunks.back() + 1;
-	std::cout << "Resuming upload from chunk " << resume_chunk_index << std::endl;
-
-	// Mở file và tiếp tục upload từ chunk đã dừng lại
-	std::ifstream file(file_path, std::ios::binary);
-	if (!file.is_open())
-	{
-		std::cerr << "Failed to open file." << std::endl;
+		std::cerr << "Checkpoint file not found. The file cannot be resumed." << std::endl;
+		std::cerr << "Please upload the file from the beginning." << std::endl;
 		return false;
 	}
 
-	// Gửi lại yêu cầu upload nếu chưa gửi (phục vụ cho resume)
-	std::error_code upload_ec;
-	std::streamsize chunk_size = 1024 * 1024; // Kích thước mỗi chunk
-	size_t total_sent = resume_chunk_index * chunk_size;
-	file.seekg(total_sent);
+	// Read the checkpoint file
+	std::ifstream state_file(file_ckp, std::ios::binary);
+	uint32_t file_id{};
+	size_t chunk_size{};
+	state_file.read(reinterpret_cast<char*>(&file_id), sizeof(file_id));
+	state_file.read(reinterpret_cast<char*>(&chunk_size), sizeof(chunk_size));
+	state_file.close();
 
-	PacketUploadRequest uploadReq(file_path, "File", fileSize, md5Handler->calcCheckSumFile(file_path).data());
-	if (!m_connection->sendPacket(PacketType::UPLOAD_REQUEST, uploadReq))
+	PacketResumeRequest resumeReq(file_id, 0, 0); // Resume position sẽ mặc định là 0, kết quả sẽ cập nhật theo của Server
+
+	if (!m_connection->sendPacket(PacketType::RESUME_UPLOAD_REQUEST, resumeReq))
 	{
-		std::cerr << "Failed to send upload request." << std::endl;
+		std::cerr << "Failed to send resume request." << std::endl;
 		return false;
 	}
 
 	PacketHeader header;
-	PacketUploadResponse uploadResp;
-	if (!m_connection->recvPacket(PacketType::UPLOAD_RESPONSE, header, uploadResp))
+	PacketResumeResponse resumeResp;
+
+	if (!m_connection->recvPacket(PacketType::RESUME_RESPONSE, header, resumeResp))
 	{
-		std::cerr << "Failed to receive upload response." << std::endl;
+		std::cerr << "Failed to receive resume response." << std::endl;
 		return false;
 	}
 
-	if (uploadResp.status != UploadStatus::UPLOAD_ALLOWED)
+	if (resumeResp.status == ResumeStatus::RESUME_SUPPORTED)
 	{
-		std::cerr << "Server has denied upload. Error: " << uploadResp.out_of_space.message << std::endl;
+		std::cout << "The server has allowed the resume." << std::endl;
+		std::cout << "File ID of this upload: " << resumeResp.resume_allowed.file_id << std::endl;
+		std::cout << "Remaining chunk count: " << resumeResp.resume_allowed.remaining_chunk_count << std::endl;
+	}
+	else
+	{
+		std::cerr << "The server has denied the resume." << std::endl;
+		std::cerr << "Error message: " << resumeResp.resume_not_found.message << std::endl;
 		return false;
 	}
 
-	size_t chunk_count = (fileSize + chunk_size - 1) / chunk_size;
+	// Upload the file
+	size_t chunk_count = ((fileSize + chunk_size - 1) / chunk_size);
+	size_t last_sent_chunk_index = chunk_count - resumeResp.resume_allowed.remaining_chunk_count - 1;
 
-	for (size_t i = resume_chunk_index; i < chunk_count; i++)
+	// Open the file
+	std::ifstream file(file_path, std::ios::binary);
+	if (!file.is_open())
 	{
-		size_t current_chunk_size = std::min<size_t>(chunk_size, fileSize - total_sent);
-		std::vector<uint8_t> chunk_data(current_chunk_size);
-
-		if (!file.read(reinterpret_cast<char*>(chunk_data.data()), current_chunk_size))
-		{
-			std::cerr << "Failed to read file chunk." << std::endl;
-			return false;
-		}
-
-		// Tính checksum cho chunk nếu cần
-		std::vector<uint8_t> chunk_checksum;
-		if (CHECKSUM_FLAG)
-		{
-			chunk_checksum = md5Handler->calcCheckSum(chunk_data);
-		}
-
-		// Tạo và gửi gói chunk
-		PacketFileChunk fileChunk(
-			uploadResp.upload_allowed.file_id,
-			static_cast<uint32_t>(i),
-			static_cast<uint32_t>(current_chunk_size),
-			chunk_checksum.data(),
-			reinterpret_cast<uint8_t*>(chunk_data.data())
-		);
-
-		if (!m_connection->sendPacket(PacketType::FILE_CHUNK, fileChunk))
-		{
-			std::cerr << "Failed to send file chunk." << std::endl;
-			return false;
-		}
-
-		// Nhận ACK
-		PacketHeader ackHeader;
-		PacketFileChunkACK ack;
-		if (!m_connection->recvPacket(PacketType::FILE_CHUNK_ACK, ackHeader, ack))
-		{
-			std::cerr << "Failed to receive chunk acknowledgment." << std::endl;
-			return false;
-		}
-
-		if (!ack.success || ack.file_id != uploadResp.upload_allowed.file_id || ack.chunk_index != i)
-		{
-			std::cerr << "Chunk ACK validation failed." << std::endl;
-			return false;
-		}
-
-		total_sent += current_chunk_size;
-		SaveUploadedChunk(file_path, i);  // Lưu lại chunk đã upload
-
-		float progress = (static_cast<float>(total_sent) / fileSize) * 100.0f;
-		m_pb_manager->UpdateProgress(file_path, progress);
-
-		std::cout << "Chunk " << i << " uploaded successfully." << std::endl;
+		throw std::runtime_error("Failed to open file.");
 	}
 
-	std::cout << "File upload resumed and completed successfully." << std::endl;
+	// Seek to the last position
+	file.seekg(resumeResp.resume_allowed.resume_position, std::ios::beg);
+
+	std::cout << "Starting to resume the upload in " << chunk_count << " chunks." << std::endl;
+
+	auto start_time = std::chrono::steady_clock::now();
+	auto last_time = start_time;
+	size_t last_sent = 0;
+	double total_speed = 0.0;
+
+	size_t total_sent = resumeResp.resume_allowed.resume_position;
+
+	const int MAX_RETRIES = 3;
+	const int BASE_TIMEOUT = 1000; // 1 second
+
+	m_pb_manager->AddFile(file_path.filename().string());
+
+	for (size_t i = last_sent_chunk_index + 1; i < chunk_count; i++)
+	{
+		int retries = 0;
+		bool chunk_sent = false;
+
+		while (!chunk_sent && retries < MAX_RETRIES)
+		{
+			try
+			{
+				// Read the chunk data from the file
+				size_t current_chunk_size = std::min<size_t>(chunk_size, fileSize - total_sent);
+
+				std::vector<uint8_t> chunk_data(current_chunk_size);
+				if (!file.read(reinterpret_cast<char*>(chunk_data.data()), current_chunk_size))
+				{
+					throw std::runtime_error("Failed to read file chunk.");
+				}
+
+				// Caclulate the checksum
+				std::vector<uint8_t> checksum;
+				if (CHECKSUM_FLAG)
+				{
+					checksum = md5_handler->calcCheckSum(chunk_data);
+				}
+
+				// Prepare the file chunk packet
+				PacketFileChunk fileChunk(
+					resumeResp.resume_allowed.file_id,				// File ID
+					static_cast<uint32_t>(i),						// Chunk index
+					static_cast<uint32_t>(current_chunk_size),		// Chunk size
+					checksum.data(),								// Checksum
+					reinterpret_cast<uint8_t*>(chunk_data.data())	// Chunk data
+				);
+
+				if (!m_connection->sendPacket(PacketType::FILE_CHUNK, fileChunk))
+				{
+					throw std::runtime_error("Failed to send file chunk.");
+				}
+
+				PacketHeader ackHeader;
+				PacketFileChunkACK ack;
+
+				if (!m_connection->recvPacket(PacketType::FILE_CHUNK_ACK, ackHeader, ack))
+				{
+					throw std::runtime_error("Failed to receive chunk acknowledgment.");
+				}
+
+				if (!ack.success ||
+					ack.file_id != resumeResp.resume_allowed.file_id ||
+					ack.chunk_index != i)
+				{
+					throw std::runtime_error("Chunk ACK validation failed.");
+				}
+
+				// Success
+				chunk_sent = true;
+				total_sent += current_chunk_size;
+
+				// Tính tốc độ upload
+				auto current_time = std::chrono::steady_clock::now();
+				std::chrono::duration<double> elapsed = current_time - last_time;
+				size_t bytes_sent_since_last = total_sent - last_sent;
+				double seconds = elapsed.count();
+
+				double speed_mbps = 0.0;
+				if (seconds > 0)
+				{
+					speed_mbps = (bytes_sent_since_last * 8.0) / (seconds * 1000000.0); // Mbps
+				}
+
+				// Cập nhật thời gian và bytes gửi
+				last_time = current_time;
+				last_sent = total_sent;
+
+				float progress = (static_cast<float>(resumeReq.resume_position + total_sent) / fileSize) * 100.0f;
+				m_pb_manager->UpdateProgress(file_path.filename().string(), progress);
+
+				// Lưu trạng thái upload 
+				std::ofstream state_file(file_ckp, std::ios::binary | std::ios::trunc);
+				state_file.write(reinterpret_cast<const char*>(&resumeResp.resume_allowed.file_id), sizeof(resumeResp.resume_allowed.file_id));
+				state_file.write(reinterpret_cast<const char*>(&i), sizeof(i));
+				state_file.close();
+			}
+			catch (const std::exception& e)
+			{
+				retries++;
+				std::cerr << "Attempt " << retries << " failed: " << e.what() << std::endl;
+
+				if (retries >= MAX_RETRIES)
+				{
+					std::cerr << "Max retries reached. Aborting." << std::endl;
+					return false;
+				}
+
+				// Exponential backoff
+				int timeout = BASE_TIMEOUT * (1 << retries);
+				std::cout << "Retrying in " << timeout << " ms..." << std::endl;
+				std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+			}
+		}
+
+		if (!chunk_sent)
+		{
+			std::cerr << "Failed to send chunk " << i << std::endl;
+			return false;
+		}
+	}
+
+	// Đóng checkpoint file
+	if (fs::exists(file_ckp))
+	{
+		fs::remove(file_ckp);
+	}
+
+	file.close(); // Đóng file sau khi upload xong
+
+	auto end_time = std::chrono::steady_clock::now();
+	std::chrono::duration<double> total_duration = end_time - start_time;
+
+	std::cout << std::endl
+			<< "File uploaded successfully : " << file_path.filename().string() << std::endl;
+	std::cout << "Total time: " << std::fixed << std::setprecision(2) << total_duration.count() << " seconds" << std::endl;
+	double avg_speed = (total_sent * 8.0) / (total_duration.count() * 1000000.0); // Mbps
+	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
+	
 	return true;
 }
-
 
 void FileTransferClient::CloseSession()
 {

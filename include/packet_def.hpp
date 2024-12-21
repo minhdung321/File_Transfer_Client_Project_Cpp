@@ -27,9 +27,6 @@ enum class PacketType : uint8_t
 	AUTHENTICATION_REQUEST,	 // Authentication request
 	AUTHENTICATION_RESPONSE, // Authentication response
 
-	RECONNECT_REQUEST,	// Reconnect request
-	RECONNECT_RESPONSE, // Reconnect response
-
 	CREATE_DIR_REQUEST,	 // Create a directory
 	CREATE_DIR_RESPONSE, // Create directory response
 
@@ -43,7 +40,7 @@ enum class PacketType : uint8_t
 	DOWNLOAD_REQUEST,  // Download a file
 	DOWNLOAD_RESPONSE, // Download response
 
-	RESUME_REQUEST,	 // Resume upload request
+	RESUME_UPLOAD_REQUEST,	 // Resume upload request
 	RESUME_RESPONSE, // Resume upload response
 
 	FILE_CHUNK,		// File chunk
@@ -53,7 +50,6 @@ enum class PacketType : uint8_t
 	ERR_PACKET	   // Error packet
 };
 
-#pragma pack(push, 1) // No padding
 struct PacketPrefix
 {
 	uint32_t encrypted_packet_length; // Encrypted packet length (4 bytes)
@@ -135,9 +131,9 @@ struct PacketHeader
 		return const_cast<uint8_t*>(session_id);
 	}
 
-	bool ValidateSessionID(const uint8_t* session_id) const
+	bool ValidateSessionID(const uint8_t* session_id_) const
 	{
-		return memcmp(this->session_id, session_id, 16) == 0;
+		return memcmp(this->session_id, session_id_, 16) == 0;
 	}
 };
 
@@ -236,99 +232,6 @@ struct PacketHandshakeResponse
 	}
 };
 
-struct PacketReconnectRequest
-{
-	uint8_t session_id[16]; // Session ID (unique identifier) - (16 bytes)
-
-	std::vector<uint8_t> serialize() const
-	{
-		size_t total_size = sizeof(PacketReconnectRequest);
-		std::vector<uint8_t> buffer(total_size);
-		memcpy(buffer.data(), this, total_size);
-		return buffer;
-	}
-
-	static PacketReconnectRequest deserialize(const uint8_t* data, size_t size)
-	{
-		if (size < sizeof(PacketReconnectRequest))
-			throw std::runtime_error("Insufficient data for PacketReconnectRequest deserialization");
-
-		PacketReconnectRequest request{};
-		memcpy(&request, data, sizeof(PacketReconnectRequest));
-		return request;
-	}
-};
-
-struct PacketReconnectResponse
-{
-	bool reconnected;		 // Reconnection status (true if successful) - (1 byte)
-	uint16_t message_length; // Message length (2 bytes)
-	std::string message;	 // Message (e.g., "Reconnection successful")
-	// This message can be used for debugging purposes
-
-	PacketReconnectResponse()
-		: reconnected(false),
-		message_length(0),
-		message()
-	{
-	}
-
-	PacketReconnectResponse(bool reconnected, const std::string& msg)
-		: reconnected(reconnected),
-		message_length(static_cast<uint16_t>(msg.length())),
-		message(msg)
-	{
-	}
-
-	std::vector<uint8_t> serialize() const
-	{
-		if (message.length() > UINT16_MAX)
-			throw std::runtime_error("Message length exceeds the maximum value");
-
-		size_t total_size = sizeof(reconnected) + sizeof(message_length) + message.length();
-		std::vector<uint8_t> buffer;
-		buffer.reserve(total_size);
-
-		// Serialize fixed-size fields
-		buffer.push_back(reconnected);
-
-		// Serialize message length
-		buffer.insert(buffer.end(),
-			reinterpret_cast<const uint8_t*>(&message_length),
-			reinterpret_cast<const uint8_t*>(&message_length) + sizeof(message_length));
-
-		// Serialize variable-size fields
-		buffer.insert(buffer.end(), message.begin(), message.end());
-
-		return buffer;
-	}
-
-	static PacketReconnectResponse deserialize(const uint8_t* data, size_t size)
-	{
-		if (size < sizeof(reconnected) + sizeof(message_length))
-			throw std::runtime_error("Insufficient data for PacketReconnectResponse deserialization");
-
-		PacketReconnectResponse response{};
-		size_t offset = 0;
-
-		// Deserialize fixed-size fields
-		response.reconnected = static_cast<bool>(data[offset]);
-		offset += sizeof(response.reconnected);
-
-		// Deserialize message length
-		memcpy(&response.message_length, data + offset, sizeof(response.message_length));
-		offset += sizeof(response.message_length);
-
-		if (size < offset + response.message_length)
-			throw std::runtime_error("Insufficient data for PacketReconnectResponse deserialization");
-
-		// Deserialize variable-size fields
-		response.message.assign(reinterpret_cast<const char*>(data + offset), response.message_length);
-
-		return response;
-	}
-};
-
 struct PacketAuthenticationRequest
 {
 	char username[MAX_USERNAME_LENGTH];
@@ -375,7 +278,13 @@ struct PacketAuthenticationResponse
 	std::string message;	 // Message (e.g., "Authentication successful")
 	// This message can be used for debugging purposes
 
-	PacketAuthenticationResponse() : authenticated(false), session_id{ 0 }, message_length(0), message() {}
+	PacketAuthenticationResponse()
+		: authenticated(false),
+		session_id{ 0 },
+		message_length(0),
+		message()
+	{
+	}
 
 	PacketAuthenticationResponse(bool auth, const uint8_t* session_id, const std::string& msg)
 		: authenticated(auth),
@@ -873,12 +782,12 @@ struct PacketUploadDirRequest
 
 	std::vector<uint8_t> serialize() const
 	{
-		size_t total_size = sizeof(file_count) + sizeof(total_size) +
+		size_t l_total_size = sizeof(file_count) + sizeof(l_total_size) +
 			sizeof(checksum_flag) + sizeof(dir_path_length) +
 			dir_path.length();
 
 		std::vector<uint8_t> buffer;
-		buffer.reserve(total_size);
+		buffer.reserve(l_total_size);
 
 		// Serialize fixed-size fields
 		buffer.insert(buffer.end(),
@@ -886,8 +795,8 @@ struct PacketUploadDirRequest
 			reinterpret_cast<const uint8_t*>(&file_count) + sizeof(file_count));
 
 		buffer.insert(buffer.end(),
-			reinterpret_cast<const uint8_t*>(&total_size),
-			reinterpret_cast<const uint8_t*>(&total_size) + sizeof(total_size));
+			reinterpret_cast<const uint8_t*>(&l_total_size),
+			reinterpret_cast<const uint8_t*>(&l_total_size) + sizeof(l_total_size));
 
 		buffer.push_back(checksum_flag);
 
@@ -1141,7 +1050,9 @@ struct PacketDownloadResponse
 
 	PacketDownloadResponse() : status(DownloadStatus::FILE_FOUND), file_info{ 0, 0, 0 } {}
 
-	PacketDownloadResponse(DownloadStatus status, uint32_t file_id, uint64_t size, uint32_t chunk_size, const uint8_t* checksum)
+	PacketDownloadResponse(DownloadStatus status,
+		uint32_t file_id, uint64_t size,
+		uint32_t chunk_size, const uint8_t* checksum)
 		: status(status)
 	{
 		if (status == DownloadStatus::FILE_FOUND)
@@ -1679,6 +1590,5 @@ struct PacketError
 		return error;
 	}
 };
-#pragma pack(pop)
 
 #endif // !PACKET_DEF_H

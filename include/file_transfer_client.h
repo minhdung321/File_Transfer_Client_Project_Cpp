@@ -17,7 +17,7 @@ private:
 	std::unique_ptr<NetworkConnection> m_connection;
 	std::unique_ptr<SessionManager> m_session_manager;
 	std::unique_ptr<ProgressBarManager> m_pb_manager; // Progress bar manager
-	std::unique_ptr<security::datasecurity::integrity::MD5Handler> md5Handler;
+	std::unique_ptr<security::datasecurity::integrity::MD5Handler> md5_handler;
 
 public:
 	FileTransferClient();
@@ -30,13 +30,7 @@ public:
 	bool DownloadFile(const std::string& file_name);
 
 	bool UploadDirectory(const fs::path& dir_path, size_t total_files);
-
-
-	std::vector<size_t> LoadUploadedChunks(const std::string& file_path);
-	void SaveUploadedChunk(const std::string& file_path, size_t chunk_index);
-	bool ResumeUpload(const std::string& file_path);
-	bool HasImcompleteUpload(const std::string& file_path);
-
+	bool ResumeUpload(const fs::path& file_path);
 
 	void CloseSession();
 
