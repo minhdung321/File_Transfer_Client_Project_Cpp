@@ -27,9 +27,6 @@ enum class PacketType : uint8_t
 	AUTHENTICATION_REQUEST,	 // Authentication request
 	AUTHENTICATION_RESPONSE, // Authentication response
 
-	RECONNECT_REQUEST,	// Reconnect request
-	RECONNECT_RESPONSE, // Reconnect response
-
 	CREATE_DIR_REQUEST,	 // Create a directory
 	CREATE_DIR_RESPONSE, // Create directory response
 
@@ -235,99 +232,6 @@ struct PacketHandshakeResponse
 	}
 };
 
-struct PacketReconnectRequest
-{
-	uint8_t session_id[16]; // Session ID (unique identifier) - (16 bytes)
-
-	std::vector<uint8_t> serialize() const
-	{
-		size_t total_size = sizeof(PacketReconnectRequest);
-		std::vector<uint8_t> buffer(total_size);
-		memcpy(buffer.data(), this, total_size);
-		return buffer;
-	}
-
-	static PacketReconnectRequest deserialize(const uint8_t* data, size_t size)
-	{
-		if (size < sizeof(PacketReconnectRequest))
-			throw std::runtime_error("Insufficient data for PacketReconnectRequest deserialization");
-
-		PacketReconnectRequest request{};
-		memcpy(&request, data, sizeof(PacketReconnectRequest));
-		return request;
-	}
-};
-
-struct PacketReconnectResponse
-{
-	bool reconnected;		 // Reconnection status (true if successful) - (1 byte)
-	uint16_t message_length; // Message length (2 bytes)
-	std::string message;	 // Message (e.g., "Reconnection successful")
-	// This message can be used for debugging purposes
-
-	PacketReconnectResponse()
-		: reconnected(false),
-		message_length(0),
-		message()
-	{
-	}
-
-	PacketReconnectResponse(bool reconnected, const std::string& msg)
-		: reconnected(reconnected),
-		message_length(static_cast<uint16_t>(msg.length())),
-		message(msg)
-	{
-	}
-
-	std::vector<uint8_t> serialize() const
-	{
-		if (message.length() > UINT16_MAX)
-			throw std::runtime_error("Message length exceeds the maximum value");
-
-		size_t total_size = sizeof(reconnected) + sizeof(message_length) + message.length();
-		std::vector<uint8_t> buffer;
-		buffer.reserve(total_size);
-
-		// Serialize fixed-size fields
-		buffer.push_back(reconnected);
-
-		// Serialize message length
-		buffer.insert(buffer.end(),
-			reinterpret_cast<const uint8_t*>(&message_length),
-			reinterpret_cast<const uint8_t*>(&message_length) + sizeof(message_length));
-
-		// Serialize variable-size fields
-		buffer.insert(buffer.end(), message.begin(), message.end());
-
-		return buffer;
-	}
-
-	static PacketReconnectResponse deserialize(const uint8_t* data, size_t size)
-	{
-		if (size < sizeof(reconnected) + sizeof(message_length))
-			throw std::runtime_error("Insufficient data for PacketReconnectResponse deserialization");
-
-		PacketReconnectResponse response{};
-		size_t offset = 0;
-
-		// Deserialize fixed-size fields
-		response.reconnected = static_cast<bool>(data[offset]);
-		offset += sizeof(response.reconnected);
-
-		// Deserialize message length
-		memcpy(&response.message_length, data + offset, sizeof(response.message_length));
-		offset += sizeof(response.message_length);
-
-		if (size < offset + response.message_length)
-			throw std::runtime_error("Insufficient data for PacketReconnectResponse deserialization");
-
-		// Deserialize variable-size fields
-		response.message.assign(reinterpret_cast<const char*>(data + offset), response.message_length);
-
-		return response;
-	}
-};
-
 struct PacketAuthenticationRequest
 {
 	char username[MAX_USERNAME_LENGTH];
@@ -366,12 +270,11 @@ struct PacketAuthenticationRequest
 	}
 };
 
-struct alignas(8) PacketAuthenticationResponse
+struct PacketAuthenticationResponse
 {
 	bool authenticated;		 // Authentication status (true if successful) - (1 byte)
 	uint8_t session_id[16];	 // Server will generate a session ID for the client and send it back - (16 bytes)
 	uint16_t message_length; // Message length (2 bytes)
-	char padding[5]; 	 // Padding to align the next field
 	std::string message;	 // Message (e.g., "Authentication successful")
 	// This message can be used for debugging purposes
 
@@ -379,7 +282,6 @@ struct alignas(8) PacketAuthenticationResponse
 		: authenticated(false),
 		session_id{ 0 },
 		message_length(0),
-		padding{ 0 },
 		message()
 	{
 	}
@@ -388,7 +290,6 @@ struct alignas(8) PacketAuthenticationResponse
 		: authenticated(auth),
 		session_id{ 0 },
 		message_length(static_cast<uint16_t>(msg.length())),
-		padding{ 0 },
 		message(msg)
 	{
 		if (session_id)

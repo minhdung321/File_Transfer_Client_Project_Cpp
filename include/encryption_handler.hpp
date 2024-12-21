@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace security
 {
@@ -275,7 +276,7 @@ namespace security
 				}
 
 				// Tính MD5 checksum cho toàn bộ file
-				static std::vector<uint8_t> calcCheckSumFile(const std::string& file_path)
+				static std::vector<uint8_t> calcCheckSumFile(const std::string& file_path, std::function<void(size_t)> progress_callback = nullptr)
 				{
 					std::ifstream file(file_path, std::ios::binary);
 					if (!file.is_open())
@@ -310,6 +311,11 @@ namespace security
 							{
 								EVP_MD_CTX_free(md_ctx);
 								throw std::runtime_error("Error: EVP_DigestUpdate failed.");
+							}
+
+							if (progress_callback)
+							{
+								progress_callback(static_cast<size_t>(file.tellg()));
 							}
 						}
 					}

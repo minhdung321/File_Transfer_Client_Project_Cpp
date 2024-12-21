@@ -31,7 +31,6 @@ public:
 
 	bool UploadDirectory(const fs::path& dir_path, size_t total_files);
 
-
 	std::vector<size_t> LoadUploadedChunks(const std::string& file_path);
 	void SaveUploadedChunk(const std::string& file_path, size_t chunk_index);
 	bool ResumeUpload(const std::string& file_path);
@@ -46,11 +45,9 @@ private:
 		std::string file_name;
 		uint64_t file_size;
 		bool is_directory;
-		uint8_t checksum[16];
 
 		FileEntry() : file_size(0), is_directory(false)
 		{
-			memset(checksum, 0, 16);
 		}
 
 		FileEntry(const std::string& abs_path,
@@ -62,17 +59,9 @@ private:
 			relative_path(rel_path),
 			file_name(name),
 			file_size(size),
-			is_directory(is_dir),
-			checksum()
+			is_directory(is_dir)
 		{
-			if (checksum)
-			{
-				memcpy(this->checksum, checksum, 16);
-			}
 		}
-
-		std::string GetFilePath() const { return absolute_path; }
-		std::string GetFileName() const { return file_name; }
 	};
 };
 

@@ -42,6 +42,7 @@ static void transfer_page()
 	default:
 	{
 		ftClient->CloseSession();
+		ftClient->GetSessionManager().ResetSession();
 		cliClient.SetState(CLIState::EXIT);
 		cliClient.exitApplication();
 		break;
@@ -56,6 +57,8 @@ static void transfer_page()
 static void login_page()
 {
 	ftClient->GetConnection().Disconnect();
+
+	ftClient->GetSessionManager().ResetSession();
 
 	ftClient->GetConnection().Connect("127.0.0.1", 27015);
 

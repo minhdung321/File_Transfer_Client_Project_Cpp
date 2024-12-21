@@ -3,12 +3,14 @@
 
 #include <packet_helper.hpp>
 
-#include <vector>
-#include <string>
+#include <chrono>
+#include <iostream>
 #include <memory>
+#include <string>
+#include <thread>
+#include <vector>
 #include <Winsock2.h>
 #include <WS2tcpip.h>
-#include <iostream>
 
 #pragma comment(lib, "Ws2_32.lib")
 
@@ -19,9 +21,10 @@ public:
 	~NetworkConnection();
 
 	void Connect(const std::string& server_ip, uint16_t server_port);
-	bool Send(const std::vector<uint8_t>& data);
-	bool Receive(uint8_t* data, size_t size);
+	bool Send(const std::vector<uint8_t>& data) const;
+	bool Receive(uint8_t* data, size_t size) const;
 	void Disconnect();
+	bool Reconnect();
 
 	bool IsConnected() const;
 
@@ -127,8 +130,12 @@ public:
 
 private:
 	SOCKET m_socket;
+	std::string m_server_ip;
+	uint16_t m_server_port;
 	bool m_is_connected;
 
+	static constexpr auto MAX_ATTEMPTS = 3;
+	static constexpr auto MAX_TIMEOUT = 30; // seconds
 	static constexpr size_t MAX_PAYLOAD_SIZE = 1024 * 1024 * 32 + 1024 * 512; // 32 MB + 512KB
 };
 

@@ -39,8 +39,15 @@ bool FileTransferClient::UploadFile(
 		throw std::runtime_error("Failed to get file size.");
 	}
 
+	m_pb_manager->AddFile("Calculating checksum");
+
 	// Calculate the checksum
-	std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path.string());
+	std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_path.string(), [this, fileSize](size_t progress)
+		{
+			m_pb_manager->UpdateProgress("Calculating checksum", static_cast<float>(progress * 100.0f / fileSize));
+		});
+
+	m_pb_manager->Cleanup();
 
 	// Prepare the upload request
 	PacketUploadRequest uploadReq(remote_path, "File", fileSize, checksum.data());
@@ -121,7 +128,10 @@ bool FileTransferClient::UploadFile(
 		throw std::runtime_error("Failed to open file.");
 	}
 
-	std::cout << "Starting to upload the file in " << chunk_count << " chunks." << std::endl;
+	if (!is_uploading_directory)
+	{
+		std::cout << "Starting to upload the file in " << chunk_count << " chunks." << std::endl;
+	}
 
 	auto start_time = std::chrono::steady_clock::now();
 	auto last_time = start_time;
@@ -447,10 +457,6 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 			file_entry.file_name = entry.path().filename().string();
 			file_entry.file_size = fs::file_size(entry);
 
-			std::vector<uint8_t> checksum = md5Handler->calcCheckSumFile(file_entry.absolute_path);
-
-			memcpy(file_entry.checksum, checksum.data(), 16);
-
 			fileEntries.emplace_back(file_entry);
 		}
 
@@ -480,8 +486,6 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 
 	m_pb_manager->ShowTotalProgress(true);
 
-	current_file_count = 0;
-
 	for (const auto& fileEntry : fileEntries)
 	{
 		if (!UploadFile(fileEntry.absolute_path, fileEntry.relative_path))
@@ -489,8 +493,6 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 			std::cerr << "Failed to upload file: " << fileEntry.relative_path << std::endl;
 			continue;
 		}
-
-		current_file_count++;
 	}
 
 	is_uploading_directory = false;
@@ -648,7 +650,6 @@ bool FileTransferClient::ResumeUpload(const std::string& file_path)
 	return true;
 }
 
-
 void FileTransferClient::CloseSession()
 {
 	PacketCloseSession closeReq = PacketCloseSession();
@@ -663,6 +664,8 @@ void FileTransferClient::CloseSession()
 	m_pb_manager->Cleanup();
 
 	m_connection->Disconnect();
+
+	m_session_manager->ResetSession();
 
 	std::cout << "Connection closed." << std::endl;
 }

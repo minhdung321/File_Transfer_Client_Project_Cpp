@@ -96,6 +96,8 @@ public:
 				m_start_pos = csbi_current.dwCursorPosition;
 				m_initialized = true;
 			}
+
+			AddFile(m_total_progress_name);
 		}
 		redrawProgressBars();
 	}
@@ -198,7 +200,7 @@ private:
 		int pos = static_cast<int>(barWidth * progress / 100.0f);
 		for (int i = 0; i < barWidth; ++i) {
 			if (i < pos)
-				std::cout << (char)219; // Full block character
+				std::cout << (char)254; // Square block character
 			else
 				std::cout << " ";
 		}

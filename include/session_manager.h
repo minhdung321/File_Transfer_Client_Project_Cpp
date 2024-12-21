@@ -21,6 +21,8 @@ public:
 	bool PerformAuthentication(const std::string& username, const std::string& password);
 	bool PerformReconnect();
 
+	void ResetSession();
+
 	const uint8_t* GetSessionID() const;
 	void SetSessionID(const uint8_t* new_session_id);
 };
