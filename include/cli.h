@@ -380,6 +380,52 @@ namespace cli
 			state = CLIState::SESSION;
 		}
 
+
+		void showDownloadFile(FileTransferClient* client)
+		{
+			if (state != CLIState::DOWNLOAD)
+			{
+				throw std::runtime_error("Invalid state for showing download file");
+			}
+
+			system("cls"); // Clear screen
+			cout << "===============================================\n";
+			cout << "||                                           ||\n";
+			cout << "||              DOWNLOAD FILE                ||\n";
+			cout << "||                                           ||\n";
+			cout << "===============================================\n";
+
+			try
+			{
+
+				string filename;
+				getline(cin, filename);
+
+				waitForEnter();
+
+				if (!confirmAction("Do you want to download this file?"))
+				{
+					showTransferMenu(); // Return to transfer menu
+				}
+
+				// 
+				if (client->DownloadFile(filename))
+				{
+					cout << endl << "File downloaded successfully." << endl;
+				}
+				else
+				{
+					cerr << "Failed to download file.\n";
+				}
+			}
+			catch (const std::exception& e)
+			{
+				cerr << "Error: " << e.what() << endl;
+			}
+
+			waitForEnter();
+			showTransferMenu(); // Return to transfer menu
+		}
 		// {folderPath, totalItems, totalSize}
 		std::tuple<fs::path, size_t, size_t> OpenDirectoryDialog()
 		{

@@ -42,6 +42,10 @@ static void transfer_page()
 		login_page(); // Move to login page
 		break;
 	}
+	case 3:
+		cliClient.SetState(CLIState::DOWNLOAD);
+		cliClient.showDownloadFile(ftClient.get());
+		break;
 	default:
 	{
 		ftClient->CloseSession();

@@ -450,8 +450,207 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 		}
 	}
 
-	std::cout << std::endl
-		<< "File downloaded successfully." << std::endl;
+	auto end_time = std::chrono::steady_clock::now();
+	std::chrono::duration<double> total_duration = end_time - start_time;
+
+	std::cout << "Total time: " << std::fixed << std::setprecision(2) << total_duration.count() << " seconds" << std::endl;
+	double avg_speed = (total_received * 8.0) / (total_duration.count() * 1'000'000.0); // Mbps
+	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
+
+	return true;
+}
+
+bool  FileTransferClient::ResumeDownload(const std::string& filename)
+{
+	uint32_t file_id_read;
+	uint64_t resume_position_read;
+	uint32_t last_chunk_index_read;
+	uint64_t file_size;
+	std::ifstream resume_in(filename + "resume_state.txt", std::ios::binary);
+	if (resume_in.is_open())
+	{
+
+		resume_in.read(reinterpret_cast<char*>(&file_id_read), sizeof(file_id_read));
+		resume_in.read(reinterpret_cast<char*>(&resume_position_read), sizeof(resume_position_read));
+		resume_in.read(reinterpret_cast<char*>(&last_chunk_index_read), sizeof(last_chunk_index_read));
+		resume_in.read(reinterpret_cast<char*>(&file_size), sizeof(file_size));
+		resume_in.close();
+
+		std::cout << "Resume state saved: " << std::endl;
+		std::cout << "File ID: " << file_id_read << std::endl;
+		std::cout << "Resume Position: " << resume_position_read << " bytes" << std::endl;
+		std::cout << "Last Chunk Index: " << last_chunk_index_read << std::endl;
+	}
+	resume_in.close();
+
+	// Prepare the download request
+	PacketResumeRequest p_request(file_id_read, resume_position_read, last_chunk_index_read);
+
+	if (!m_connection->sendPacket(PacketType::RESUME_REQUEST, p_request))
+	{
+		throw std::runtime_error("Failed to send download request.");
+	}
+
+	PacketHeader header;
+	PacketResumeResponse p_response;
+
+	if (!m_connection->recvPacket(PacketType::RESUME_RESPONSE, header, p_response))
+	{
+		throw std::runtime_error("Failed to receive download response.");
+	}
+
+	if (p_response.status != ResumeStatus::RESUME_SUPPORTED)
+	{
+		std::cerr << "Server is not support resuming this file. Message: " << p_response.resume_not_found.message << std::endl;
+		return false;
+	}
+
+	std::cout << "The server has allowed resuming download." << std::endl;
+	std::cout << "File id: " << p_response.resume_allowed.file_id << std::endl;
+	std::cout << "Resume position : " << p_response.resume_allowed.resume_position << std::endl;
+	std::cout << "Remainning chunk : " << p_response.resume_allowed.remaining_chunk_count << std::endl;
+
+	// Receive file chunks
+	size_t total_received = resume_position_read;
+
+	//std::vector<uint8_t> checksum(p_response.file_info.checksum, p_response.file_info.checksum + 16);
+
+	std::string new_file_name = filename;
+	//std::ifstream check(filename, std::ios::binary);
+	//if (check.is_open())
+	//{
+	//	fs::path path(filename);
+	//	std::string namePart = path.stem().string();
+	//	std::string extension = path.extension().string();
+
+	//	auto now = std::chrono::system_clock::now();
+	//	auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+	//	std::stringstream timestamp;
+	//	timestamp << "_" << now_ms;
+
+	//	// Thêm timestamp vào tên tệp
+	//	new_file_name = namePart + timestamp.str() + extension;
+	//}
+
+
+	std::ofstream file(new_file_name, std::ios::binary | std::ios::app);
+
+	auto start_time = std::chrono::steady_clock::now();
+	auto last_time = start_time;
+	size_t last_received = 0;
+
+	std::unordered_map<uint32_t, int> retry_counts;
+
+	if (!file.is_open())
+	{
+		std::cout << "Cannot open file to write." << std::endl;
+		return false;
+	}
+
+	while (p_response.resume_allowed.remaining_chunk_count-- > 0)
+	{
+		PacketHeader header;
+		PacketFileChunk fileChunk;
+
+		if (!m_connection->recvPacket(PacketType::FILE_CHUNK, header, fileChunk))
+		{
+			throw std::runtime_error("Failed to receive file chunk.");
+		}
+
+		if (fileChunk.file_id != p_response.resume_allowed.file_id)
+		{
+			throw std::runtime_error("Invalid file ID in file chunk.");
+		}
+
+
+		// Validate checksum
+		bool checksum_valid = true;
+		if (CHECKSUM_FLAG)
+		{
+			std::vector<uint8_t> chunk_checksum = md5Handler->calcCheckSum(fileChunk.data);
+
+			if (memcmp(chunk_checksum.data(), fileChunk.checksum, 16) != 0)
+			{
+				std::cerr << "Checksum mismatch in chunk " << fileChunk.chunk_index << std::endl;
+				checksum_valid = false;
+			}
+		}
+
+		// Acknowledge the chunk
+		PacketFileChunkACK chunkACK(
+			fileChunk.file_id,
+			fileChunk.chunk_index,
+			checksum_valid);
+
+		if (!m_connection->sendPacket(PacketType::FILE_CHUNK_ACK, chunkACK))
+		{
+			throw std::runtime_error("Failed to send chunk acknowledgment.");
+		}
+
+		if (checksum_valid)
+		{
+			// Write the chunk data to the file
+			file.write(reinterpret_cast<const char*>(fileChunk.data.data()), fileChunk.chunk_size);
+			file.flush();
+
+			total_received += fileChunk.chunk_size;
+
+			std::ofstream resume_out(filename + "resume_state.txt", std::ios::binary);
+			resume_out.write(reinterpret_cast<const char*>(&p_response.resume_allowed.file_id), sizeof(p_response.resume_allowed.file_id));
+			resume_out.write(reinterpret_cast<const char*>(&total_received), sizeof(total_received));
+			resume_out.write(reinterpret_cast<const char*>(&fileChunk.chunk_index), sizeof(fileChunk.chunk_index));
+			resume_out.write(reinterpret_cast<const char*>(&file_size), sizeof(file_size));
+			resume_out.close();
+
+			// Calculate download speed
+			auto current_time = std::chrono::steady_clock::now();
+			std::chrono::duration<double> elapsed = current_time - last_time;
+			size_t bytes_received_since_last = total_received - last_received;
+			double seconds = elapsed.count();
+
+			double speed_mbps = 0.0;
+			if (seconds > 0)
+			{
+				speed_mbps = (bytes_received_since_last * 8.0) / (seconds * 1'000'000.0); // Mbps
+			}
+
+			// Update time and bytes received
+			last_time = current_time;
+			last_received = total_received;
+
+			// Calculate progress
+			float progress = (static_cast<float>(total_received) / file_size) * 100.0f;
+			m_pb_manager->UpdateProgress(filename, progress);
+		}
+		else
+		{
+			retry_counts[fileChunk.chunk_index]++;
+			if (retry_counts[fileChunk.chunk_index] >= 3)
+			{
+				std::cerr << "Max retries reached for chunk " << fileChunk.chunk_index << ". Aborting." << std::endl;
+				file.close();
+				return false;
+			}
+
+			// Inform the user and wait before retrying
+			std::cerr << "\nRequesting retransmission of chunk " << fileChunk.chunk_index << " (Retry " << retry_counts[fileChunk.chunk_index] << ")" << std::endl;
+			// Optionally, add a delay before the next attempt
+			std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		}
+	}
+
+	file.close();
+
+	// Validate checksum
+	/*if (CHECKSUM_FLAG)
+	{
+		std::vector<uint8_t> file_checksum = md5Handler->calcCheckSumFile(filename);
+		if (memcmp(file_checksum.data(), checksum.data(), 16) != 0)
+		{
+			std::cerr << "Checksum mismatch in the downloaded file." << std::endl;
+			return false;
+		}
+	}*/
 
 	auto end_time = std::chrono::steady_clock::now();
 	std::chrono::duration<double> total_duration = end_time - start_time;
@@ -459,6 +658,9 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	std::cout << "Total time: " << std::fixed << std::setprecision(2) << total_duration.count() << " seconds" << std::endl;
 	double avg_speed = (total_received * 8.0) / (total_duration.count() * 1'000'000.0); // Mbps
 	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
+
+	// Delete resume status after download successful
+	//deleteFile(filename + "resume_state.txt");
 
 	return true;
 }
@@ -939,6 +1141,12 @@ bool FileTransferClient::ResumeUpload(const fs::path& file_path)
 	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
 
 	return true;
+}
+
+bool FileTransferClient::GetServerFileList()
+{
+
+	return false;
 }
 
 void FileTransferClient::CloseSession()
