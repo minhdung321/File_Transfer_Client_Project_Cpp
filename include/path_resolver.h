@@ -1,8 +1,6 @@
 #ifndef PATH_RESOLVER_H
 #define PATH_RESOLVER_H
 
-#include "system_utils/log_reporter.h"
-
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -17,7 +15,6 @@ namespace utils
 	class PathResolver
 	{
 	private:
-		LogReporter& reporter = LogReporter::GetInstance();
 
 	public:
 		~PathResolver();
@@ -31,9 +28,9 @@ namespace utils
 		bool CheckFileNameExist(const std::string& filePath);
 
 		bool CreateSubdirectory(const std::string& dirPath);
-		bool CreateFile(const std::string& fullPath);
+		bool CreateFileWithName(const std::string& fullPath);
 
-		bool DeleteFile(const std::string& filename);
+		bool DeleteFileWithName(const std::string& filePath);
 		bool DeleteDirectory(const std::string& dirPath);
 
 		std::string GenerateNewFileName(const std::string& fileName);

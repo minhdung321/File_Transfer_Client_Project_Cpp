@@ -1,5 +1,7 @@
 ﻿#include <file_transfer_client.h>
 #include <packet_helper.hpp>
+#include <path_resolver.h>
+using namespace utils;
 
 #include <iostream>
 #include <fstream>
@@ -8,6 +10,7 @@
 #include <thread>
 #include <chrono>
 namespace fs = std::filesystem;
+
 
 constexpr auto CHECKSUM_FLAG = true;
 
@@ -303,6 +306,25 @@ bool FileTransferClient::UploadFile(
 
 bool FileTransferClient::DownloadFile(const std::string& file_name)
 {
+	// Create check point folder
+	PathResolver pathResolver;
+	uint32_t file_id = 0;
+	uint64_t resume_position = 0;
+	uint32_t last_chunk_index = 0;
+
+	fs::path path(file_name);
+	std::string namePart = path.stem().string();
+	std::string check_point_path = utils::DEFAULT_CHECK_POINT_PATH + namePart + ".ckp";
+
+	if (!pathResolver.CheckDirPathExist(utils::DEFAULT_CHECK_POINT_PATH))
+	{
+		pathResolver.CreateCheckPointDirectory();
+	}
+
+	// Create check point file
+	pathResolver.CreateFileWithName(check_point_path);
+
+	
 	// Prepare the download request
 	PacketDownloadRequest p_request(file_name);
 
@@ -336,13 +358,21 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	size_t file_size = p_response.file_info.file_size;
 	std::vector<uint8_t> checksum(p_response.file_info.checksum, p_response.file_info.checksum + 16);
 
-	std::ofstream file(file_name, std::ios::binary);
+	// Check file name exist to generate new name
+	std::string new_file_name = file_name;
+	std::ifstream check(file_name, std::ios::binary);
+	if (check.is_open())
+	{
+		new_file_name = pathResolver.GenerateNewFileName(file_name);
+	}
+
+	std::ofstream file(new_file_name, std::ios::binary);
 
 	auto start_time = std::chrono::steady_clock::now();
 	auto last_time = start_time;
 	size_t last_received = 0;
 
-	m_pb_manager->AddFile(file_name);
+	m_pb_manager->AddFile(new_file_name);
 
 	std::unordered_map<uint32_t, int> retry_counts;
 
@@ -399,6 +429,15 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 			file.flush();
 
 			total_received += fileChunk.chunk_size;
+			
+			// Save info for resuming transfer
+			std::ofstream resume_out(check_point_path, std::ios::binary);
+			resume_out.write(reinterpret_cast<const char*>(&new_file_name), sizeof(new_file_name));
+			resume_out.write(reinterpret_cast<const char*>(&p_response.file_info.file_id), sizeof(p_response.file_info.file_id));
+			resume_out.write(reinterpret_cast<const char*>(&total_received), sizeof(total_received));
+			resume_out.write(reinterpret_cast<const char*>(&fileChunk.chunk_index), sizeof(fileChunk.chunk_index));
+			resume_out.write(reinterpret_cast<const char*>(&file_size), sizeof(file_size));
+			resume_out.close();
 
 			// Calculate download speed
 			auto current_time = std::chrono::steady_clock::now();
@@ -418,7 +457,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 
 			// Calculate progress
 			float progress = (static_cast<float>(total_received) / file_size) * 100.0f;
-			m_pb_manager->UpdateProgress(file_name, progress);
+			m_pb_manager->UpdateProgress(new_file_name, progress);
 		}
 		else
 		{
@@ -442,7 +481,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	// Validate checksum
 	if (CHECKSUM_FLAG)
 	{
-		std::vector<uint8_t> file_checksum = md5_handler->calcCheckSumFile(file_name);
+		std::vector<uint8_t> file_checksum = md5_handler->calcCheckSumFile(new_file_name);
 		if (memcmp(file_checksum.data(), checksum.data(), 16) != 0)
 		{
 			std::cerr << "Checksum mismatch in the downloaded file." << std::endl;
@@ -457,19 +496,30 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	double avg_speed = (total_received * 8.0) / (total_duration.count() * 1'000'000.0); // Mbps
 	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
 
+	// If file download successful, then delete resume status of this file
+	pathResolver.DeleteFileWithName(check_point_path);
+
 	return true;
 }
 
-bool  FileTransferClient::ResumeDownload(const std::string& filename)
+bool  FileTransferClient::ResumeDownload(const std::string& file_name)
 {
+	PathResolver pathResolver;
 	uint32_t file_id_read;
 	uint64_t resume_position_read;
 	uint32_t last_chunk_index_read;
 	uint64_t file_size;
-	std::ifstream resume_in(filename + "resume_state.txt", std::ios::binary);
+	std::string temp;
+
+	fs::path path(file_name);
+	std::string namePart = path.stem().string();
+	std::string check_point_path = utils::DEFAULT_CHECK_POINT_PATH + namePart + ".ckp";
+	std::ifstream resume_in(check_point_path, std::ios::binary);
+	
+	// Repair info resuming transfer
 	if (resume_in.is_open())
 	{
-
+		resume_in.read(reinterpret_cast<char*>(&temp), sizeof(temp));
 		resume_in.read(reinterpret_cast<char*>(&file_id_read), sizeof(file_id_read));
 		resume_in.read(reinterpret_cast<char*>(&resume_position_read), sizeof(resume_position_read));
 		resume_in.read(reinterpret_cast<char*>(&last_chunk_index_read), sizeof(last_chunk_index_read));
@@ -486,7 +536,7 @@ bool  FileTransferClient::ResumeDownload(const std::string& filename)
 	// Prepare the download request
 	PacketResumeRequest p_request(file_id_read, resume_position_read, last_chunk_index_read);
 
-	if (!m_connection->sendPacket(PacketType::RESUME_REQUEST, p_request))
+	if (!m_connection->sendPacket(PacketType::RESUME_DOWNLOAD_REQUEST, p_request))
 	{
 		throw std::runtime_error("Failed to send download request.");
 	}
@@ -502,6 +552,9 @@ bool  FileTransferClient::ResumeDownload(const std::string& filename)
 	if (p_response.status != ResumeStatus::RESUME_SUPPORTED)
 	{
 		std::cerr << "Server is not support resuming this file. Message: " << p_response.resume_not_found.message << std::endl;
+
+		// If the resume state is invalid, then delete resume status of this file
+		pathResolver.DeleteFileWithName(check_point_path);
 		return false;
 	}
 
@@ -513,31 +566,13 @@ bool  FileTransferClient::ResumeDownload(const std::string& filename)
 	// Receive file chunks
 	size_t total_received = resume_position_read;
 
-	//std::vector<uint8_t> checksum(p_response.file_info.checksum, p_response.file_info.checksum + 16);
-
-	std::string new_file_name = filename;
-	//std::ifstream check(filename, std::ios::binary);
-	//if (check.is_open())
-	//{
-	//	fs::path path(filename);
-	//	std::string namePart = path.stem().string();
-	//	std::string extension = path.extension().string();
-
-	//	auto now = std::chrono::system_clock::now();
-	//	auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-	//	std::stringstream timestamp;
-	//	timestamp << "_" << now_ms;
-
-	//	// Thêm timestamp vào tên tệp
-	//	new_file_name = namePart + timestamp.str() + extension;
-	//}
-
-
-	std::ofstream file(new_file_name, std::ios::binary | std::ios::app);
+	std::ofstream file(file_name, std::ios::binary | std::ios::app);
 
 	auto start_time = std::chrono::steady_clock::now();
 	auto last_time = start_time;
 	size_t last_received = 0;
+
+	m_pb_manager->AddFile(file_name);
 
 	std::unordered_map<uint32_t, int> retry_counts;
 
@@ -567,7 +602,7 @@ bool  FileTransferClient::ResumeDownload(const std::string& filename)
 		bool checksum_valid = true;
 		if (CHECKSUM_FLAG)
 		{
-			std::vector<uint8_t> chunk_checksum = md5Handler->calcCheckSum(fileChunk.data);
+			std::vector<uint8_t> chunk_checksum = md5_handler->calcCheckSum(fileChunk.data);
 
 			if (memcmp(chunk_checksum.data(), fileChunk.checksum, 16) != 0)
 			{
@@ -595,7 +630,8 @@ bool  FileTransferClient::ResumeDownload(const std::string& filename)
 
 			total_received += fileChunk.chunk_size;
 
-			std::ofstream resume_out(filename + "resume_state.txt", std::ios::binary);
+			std::ofstream resume_out(check_point_path, std::ios::binary);
+			resume_out.write(reinterpret_cast<const char*>(&temp), sizeof(temp));
 			resume_out.write(reinterpret_cast<const char*>(&p_response.resume_allowed.file_id), sizeof(p_response.resume_allowed.file_id));
 			resume_out.write(reinterpret_cast<const char*>(&total_received), sizeof(total_received));
 			resume_out.write(reinterpret_cast<const char*>(&fileChunk.chunk_index), sizeof(fileChunk.chunk_index));
@@ -620,7 +656,8 @@ bool  FileTransferClient::ResumeDownload(const std::string& filename)
 
 			// Calculate progress
 			float progress = (static_cast<float>(total_received) / file_size) * 100.0f;
-			m_pb_manager->UpdateProgress(filename, progress);
+			m_pb_manager->UpdateProgress(file_name, progress);
+
 		}
 		else
 		{
@@ -659,8 +696,8 @@ bool  FileTransferClient::ResumeDownload(const std::string& filename)
 	double avg_speed = (total_received * 8.0) / (total_duration.count() * 1'000'000.0); // Mbps
 	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
 
-	// Delete resume status after download successful
-	//deleteFile(filename + "resume_state.txt");
+	// If file download successful, then delete resume status of this file
+	pathResolver.DeleteFileWithName(check_point_path);
 
 	return true;
 }

@@ -13,6 +13,7 @@
 #include <ShObjIdl.h>
 #include <Windows.h>
 #include <filesystem>
+#include <fstream>
 #include <file_transfer_client.h>
 using namespace std;
 namespace fs = std::filesystem;
@@ -399,9 +400,8 @@ namespace cli
 			{
 
 				string filename;
+				cout << "Enter file name you want to download : ";
 				getline(cin, filename);
-
-				waitForEnter();
 
 				if (!confirmAction("Do you want to download this file?"))
 				{
@@ -680,7 +680,112 @@ namespace cli
 			state = CLIState::SESSION;
 		}
 
-		void showResume(FileTransferClient* client)
+		void showResumeDownload(FileTransferClient* client)
+		{
+			if (!client || state != CLIState::RESUME)
+			{
+				throw std::runtime_error("Invalid client instance.");
+			}
+
+			system("cls");
+			cout << "===============================================\n";
+			cout << "||                                           ||\n";
+			cout << "||           RESUME DONWLOAD FILE            ||\n";
+			cout << "||                                           ||\n";
+			cout << "===============================================\n";
+			cout << "> Select a file to resume download...\n\n";
+
+			std::string path = "./checkpoint/";
+			std::vector<fs::path> files;
+
+			try {
+				if (fs::exists(path) && fs::is_directory(path)) {
+					int i = 0;
+					std::cout << "list of files was downloading:\n";
+
+					for (const auto& entry : fs::directory_iterator(path)) {
+						if (fs::is_regular_file(entry.path())) {
+							files.push_back(entry.path());
+
+							std::string file_name;
+							uint32_t file_id_read;
+							uint64_t resume_position_read;
+							uint32_t last_chunk_index_read;
+							uint64_t file_size;
+
+							/*fs::path path(file_name);
+							std::string namePart = path.stem().string();
+							std::string check_point_path = utils::DEFAULT_CHECK_POINT_PATH + namePart + ".ckp";*/
+
+							std::ifstream resume_in(entry.path().filename().string(), std::ios::binary);
+							// Repair info resuming transfer
+							if (resume_in.is_open())
+							{
+								resume_in.read(reinterpret_cast<char*>(&file_name), sizeof(file_name));
+							}
+							resume_in.close();
+
+							std::cout << ++i << ". " << file_name << '\n';
+						}
+					}
+
+					if (files.empty()) {
+						std::cout << "List is empty.\n";
+						return;
+					}
+
+					int choice;
+					std::cout << "Enter the file number you want to resume download: ";
+					std::cin >> choice;
+					cin.ignore();
+
+					if (choice >= 0 && choice < static_cast<int>(files.size()))
+					{
+						if (!confirmAction("Do you want to resume download this file?"))
+						{
+							return;
+						}
+
+						std::string resume_file_name;
+						std::ifstream resume_in(files[choice - 1].filename().string(), std::ios::binary);
+						// Get the file name
+						if (resume_in.is_open())
+						{
+							resume_in.read(reinterpret_cast<char*>(&resume_file_name), sizeof(resume_file_name));
+						}
+						resume_in.close();
+
+						if (client->ResumeDownload(resume_file_name))
+						{
+							cout << "File downloaded successfully.\n";
+						}
+						else
+						{
+							cerr << "Failed to download file.\n";
+						}
+					}
+					else
+					{
+						std::cerr << "Invalid option.\n";
+					}
+				}
+				else 
+				{
+					std::cerr << "Invalid directory.\n";
+				}
+			}
+			catch (const fs::filesystem_error& e) {
+				std::cerr << "Lỗi: " << e.what() << '\n';
+			}
+
+			
+
+			waitForEnter();
+
+			state = CLIState::SESSION;
+		}
+
+		void showResume(FileTransferClient* client) 
 		{
 			if (!client || state != CLIState::RESUME)
 			{
@@ -721,7 +826,7 @@ namespace cli
 				break;
 			case 2:
 				state = CLIState::RESUME;
-				// showResumeDownload(client); Khoa bổ sung sau
+				showResumeDownload(client); 
 				state = CLIState::SESSION;
 				break;
 			case 3:

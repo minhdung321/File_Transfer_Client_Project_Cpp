@@ -1,5 +1,4 @@
-﻿#include "system_utils/path_resolver.h"
-#include "path_resolver.h"
+﻿#include "path_resolver.h"
 
 
 utils::PathResolver::~PathResolver()
@@ -17,7 +16,6 @@ bool utils::PathResolver::CreateUserDirectory(const std::string& username)
 	}
 	else
 	{
-		reporter.LogMessage("[Path Resolver] Can not create user directory: " + userDirPath);
 		return false;
 	}
 }
@@ -32,7 +30,7 @@ bool utils::PathResolver::CreateCheckPointDirectory()
 	}
 	else
 	{
-		reporter.LogMessage("[Path Resolver] Can not create user directory: " + checkPointDirPath);
+		
 		return false;
 	}
 }
@@ -60,23 +58,20 @@ bool utils::PathResolver::CreateSubdirectory(const std::string& dirPath)
 	{
 		if (std::filesystem::create_directories(dirPath))
 		{
-			reporter.LogMessage("[Path Resolver] Create subdirectory successfully: " + dirPath);
 			return true;
 		}
 		else
 		{
-			reporter.LogMessage("[Path Resolver] Subdirectory already exists: " + dirPath);
 			return false;
 		}
 	}
 	catch (const std::filesystem::filesystem_error& e)
 	{
-		reporter.LogMessage("[Path Resolver] Can not create subdirectory: " + dirPath + ". Error: " + e.what());
 		return false;
 	}
 }
 
-bool utils::PathResolver::CreateFile(const std::string& fullPath)
+bool utils::PathResolver::CreateFileWithName(const std::string& fullPath)
 {
 	std::string dirPath, fileName;
 	SplitPath(fullPath, dirPath, fileName);
@@ -92,26 +87,35 @@ bool utils::PathResolver::CreateFile(const std::string& fullPath)
 
 		if (file.is_open())
 		{
-			reporter.LogMessage("[Path Resolver] Create file successfully : " + fullPath);
 			file.close();
 			return true;
 		}
 		else
 		{
-			reporter.LogMessage("[Path Resolver] Can not create file : " + fullPath);
 			return false;
 		}
 	}
 	catch (const std::exception& e)
 	{
-		reporter.LogMessage("[Path Resolver] Can not create file : " + fullPath + ". Error: " + e.what());
 		return false;
 	}
 }
 
-bool utils::PathResolver::DeleteFile(const std::string& filename)
+bool utils::PathResolver::DeleteFileWithName(const std::string& filePath)
 {
-	return false;
+	try {
+		if (fs::remove(filePath)) {
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+	catch (const fs::filesystem_error& e) {
+		std::cerr << "Error: " << e.what() << '\n';
+	}
+
+	return 0;
 }
 
 bool utils::PathResolver::DeleteDirectory(const std::string& dirPath)
