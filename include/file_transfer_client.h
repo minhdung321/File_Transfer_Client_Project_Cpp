@@ -19,22 +19,6 @@ private:
 	std::unique_ptr<ProgressBarManager> m_pb_manager; // Progress bar manager
 	std::unique_ptr<security::datasecurity::integrity::MD5Handler> md5_handler;
 
-public:
-	FileTransferClient();
-
-	NetworkConnection& GetConnection() { return *m_connection; }
-	SessionManager& GetSessionManager() { return *m_session_manager; }
-	ProgressBarManager& GetProgressBarManager() { return *m_pb_manager; }
-
-	bool UploadFile(const fs::path& file_path, const std::string& remote_path);
-	bool DownloadFile(const std::string& file_name);
-
-	bool UploadDirectory(const fs::path& dir_path, size_t total_files);
-	bool ResumeUpload(const fs::path& file_path);
-
-	void CloseSession();
-
-private:
 	struct FileEntry
 	{
 		std::string absolute_path;
@@ -60,6 +44,22 @@ private:
 		{
 		}
 	};
+public:
+	FileTransferClient();
+
+	NetworkConnection& GetConnection() { return *m_connection; }
+	SessionManager& GetSessionManager() { return *m_session_manager; }
+	ProgressBarManager& GetProgressBarManager() { return *m_pb_manager; }
+
+	bool UploadFile(const fs::path& file_path, const std::string& remote_path);
+	bool DownloadFile(const std::string& file_name);
+
+	std::vector<FileEntry> ScanDirectory(const fs::path& dir_path, size_t total_files);
+	bool UploadDirectory(const fs::path& dir_path, size_t total_files);
+	bool UploadDirectoryParallel(const fs::path& dir_path, size_t total_files);
+	bool ResumeUpload(const fs::path& file_path);
+
+	void CloseSession();
 };
 
 #endif // !FILE_TRANSFER_MANAGER_H

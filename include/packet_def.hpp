@@ -50,6 +50,7 @@ enum class PacketType : uint8_t
 	ERR_PACKET	   // Error packet
 };
 
+
 struct PacketPrefix
 {
 	uint32_t encrypted_packet_length; // Encrypted packet length (4 bytes)
@@ -1333,7 +1334,9 @@ struct PacketFileChunk
 	PacketFileChunk(uint32_t id, uint32_t index, uint32_t size, const uint8_t* checksum, const uint8_t* chunk_data)
 		: file_id(id),
 		chunk_index(index),
-		chunk_size(size)
+		chunk_size(size),
+		data(size),
+		checksum{ 0 }
 	{
 		if (checksum)
 		{

@@ -25,6 +25,8 @@ public:
 
 	const uint8_t* GetSessionID() const;
 	void SetSessionID(const uint8_t* new_session_id);
+	std::pair<std::string, std::string> GetUserCredential() const;
+	void SetUserCredential(const std::string& username, const std::string& password);
 };
 
 #endif // !SESSION_MANAGER_H

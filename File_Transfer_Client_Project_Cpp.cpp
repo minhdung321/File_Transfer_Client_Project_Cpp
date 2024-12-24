@@ -2,6 +2,7 @@
 #include <cli.h>
 #include <iostream>
 #include <functional>
+#include <progressbar_manager.h>
 using namespace cli;
 
 std::unique_ptr<FileTransferClient> ftClient;
@@ -54,6 +55,8 @@ static void transfer_page()
 	ftClient->GetProgressBarManager().Cleanup();
 
 	transfer_page(); // Continue to transfer page
+
+	return;
 }
 
 static void login_page()
@@ -66,7 +69,7 @@ static void login_page()
 
 	if (!ftClient->GetSessionManager().PerformHandshake())
 	{
-		throw std::runtime_error("Failed to connect to server. Please try again.");
+		throw std::runtime_error("Failed to connect to server. Please restart the application.");
 	}
 
 	cliClient.showWelcomeMessage();
@@ -102,7 +105,7 @@ int main()
 	}
 	catch (const std::exception& e)
 	{
-		std::cerr << "Error: " << e.what() << std::endl;
+		std::cerr << "[X] Error: " << e.what() << std::endl;
 	}
 
 	return 0;

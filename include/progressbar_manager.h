@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <deque>
 #include <Windows.h>
+#include <mutex>
 
 struct FileProgress
 {
@@ -26,12 +27,16 @@ private:
 	bool m_initialized = false;
 
 	static constexpr auto DEFAULT_MAX_FILE_NAME_LEN = 30;
-	static constexpr int MAX_DISPLAY_BARS = 10; // Số lượng thanh tiến trình tối đa hiển thị
+	static constexpr int MAX_DISPLAY_BARS = 15;
 
 	// Biến để quản lý thanh tiến trình tổng thể
 	std::string m_total_progress_name = "Total Progress";
+	size_t m_total_files = 0;
 	float m_total_progress = 0.0f;
 	bool m_show_total_progress = false;
+
+	std::chrono::steady_clock::time_point m_last_redraw_time;
+	std::chrono::milliseconds m_redraw_interval = std::chrono::milliseconds(100); // Thời gian giữa các lần vẽ lại thanh tiến trình
 
 public:
 	ProgressBarManager()
@@ -39,6 +44,7 @@ public:
 		// Lấy handle của console và thông tin về buffer
 		hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
 		GetConsoleScreenBufferInfo(hConsole, &csbi);
+		m_last_redraw_time = std::chrono::steady_clock::now();
 	}
 
 	void AddFile(const std::string& file_name)
@@ -58,9 +64,8 @@ public:
 		// Nếu chưa khởi tạo vị trí bắt đầu, lưu lại vị trí hiện tại
 		if (!m_initialized)
 		{
-			CONSOLE_SCREEN_BUFFER_INFO csbi_current;
-			GetConsoleScreenBufferInfo(hConsole, &csbi_current);
-			m_start_pos = csbi_current.dwCursorPosition;
+			GetConsoleScreenBufferInfo(hConsole, &csbi);
+			m_start_pos = csbi.dwCursorPosition;
 			m_initialized = true;
 		}
 
@@ -72,34 +77,47 @@ public:
 		if (m_files_progress.find(file_name) != m_files_progress.end())
 		{
 			m_files_progress[file_name].progress = progress;
-			redrawProgressBars();
+		}
+		else
+		{
+			// Handle case where file is not yet added
+			m_files_progress[file_name] = { TruncateFileName(file_name), progress };
+			m_file_queue.push_back(file_name);
 		}
 
-		// Cập nhật tiến trình tổng thể
-		if (m_show_total_progress)
+		auto now = std::chrono::steady_clock::now();
+		if (now - m_last_redraw_time >= m_redraw_interval)
 		{
-			calculateTotalProgress();
 			redrawProgressBars();
+			m_last_redraw_time = now;
 		}
 	}
 
-	void ShowTotalProgress(bool show)
+	void ShowTotalProgress(bool show, size_t total_files = 0)
 	{
 		m_show_total_progress = show;
+		m_total_files = total_files;
+
 		if (show)
 		{
-			// Đảm bảo thanh tiến trình tổng thể nằm ở vị trí đầu tiên
 			if (!m_initialized)
 			{
-				CONSOLE_SCREEN_BUFFER_INFO csbi_current;
-				GetConsoleScreenBufferInfo(hConsole, &csbi_current);
-				m_start_pos = csbi_current.dwCursorPosition;
+				GetConsoleScreenBufferInfo(hConsole, &csbi);
+				m_start_pos = csbi.dwCursorPosition;
 				m_initialized = true;
 			}
-
-			AddFile(m_total_progress_name);
 		}
+
 		redrawProgressBars();
+	}
+
+	void UpdateTotalProgress(size_t current_finished_files)
+	{
+		if (m_show_total_progress)
+		{
+			float progress = (static_cast<float>(current_finished_files) / m_total_files) * 100.0f;
+			m_total_progress = progress;
+		}
 	}
 
 	void Cleanup()
@@ -132,6 +150,7 @@ public:
 		m_initialized = false;
 		m_total_progress = 0.0f;
 		m_show_total_progress = false;
+		m_total_files = 0;
 	}
 
 private:
@@ -175,16 +194,8 @@ private:
 
 	void drawProgressBar(const std::string& file_name, float progress, int barWidth = 30)
 	{
-		// Di chuyển con trỏ đến đầu dòng
-		std::cout << "\r";
+		std::cout << "\r" << std::string(csbi.dwSize.X, ' ') << "\r";
 
-		// Xóa nội dung dòng hiện tại
-		std::cout << std::string(csbi.dwSize.X, ' ');
-
-		// Di chuyển con trỏ về đầu dòng lần nữa
-		std::cout << "\r";
-
-		// Chuẩn bị tên tệp tin (tối đa 30 ký tự)
 		std::string display_name = file_name;
 		if (display_name.length() > DEFAULT_MAX_FILE_NAME_LEN)
 		{
@@ -200,15 +211,12 @@ private:
 		int pos = static_cast<int>(barWidth * progress / 100.0f);
 		for (int i = 0; i < barWidth; ++i) {
 			if (i < pos)
-				std::cout << (char)254; // Square block character
+				std::cout << (char)254;
 			else
 				std::cout << " ";
 		}
 
-		std::cout << "] " << std::fixed << std::setprecision(2) << progress << "%";
-
-		// Đảm bảo con trỏ ở dòng tiếp theo
-		std::cout << std::endl;
+		std::cout << "] " << std::fixed << std::setprecision(2) << progress << "%\n";
 	}
 
 	std::string TruncateFileName(const std::string& file_name)
@@ -231,23 +239,6 @@ private:
 		name = name.substr(0, total_length);
 
 		return name + "..." + extension;
-	}
-
-	void calculateTotalProgress()
-	{
-		if (m_files_progress.empty())
-		{
-			m_total_progress = 100.0f;
-			return;
-		}
-
-		float sum_progress = 0.0f;
-		for (const auto& entry : m_files_progress)
-		{
-			sum_progress += entry.second.progress;
-		}
-
-		m_total_progress = sum_progress / m_files_progress.size();
 	}
 };
 

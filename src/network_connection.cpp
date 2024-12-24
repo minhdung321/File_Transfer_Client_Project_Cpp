@@ -158,6 +158,11 @@ bool NetworkConnection::Reconnect()
 	return m_is_connected;
 }
 
+std::pair<std::string, uint16_t> NetworkConnection::GetServerInfo() const
+{
+	return std::make_pair(m_server_ip, m_server_port);
+}
+
 bool NetworkConnection::IsConnected() const
 {
 	return m_is_connected;

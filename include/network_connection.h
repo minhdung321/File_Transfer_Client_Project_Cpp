@@ -26,6 +26,8 @@ public:
 	void Disconnect();
 	bool Reconnect();
 
+	std::pair<std::string, uint16_t> GetServerInfo() const;
+
 	bool IsConnected() const;
 
 	template <typename T>
@@ -135,7 +137,7 @@ private:
 	bool m_is_connected;
 
 	static constexpr auto MAX_ATTEMPTS = 3;
-	static constexpr auto MAX_TIMEOUT = 30; // seconds
+	static constexpr auto MAX_TIMEOUT = 300; // seconds
 	static constexpr size_t MAX_PAYLOAD_SIZE = 1024 * 1024 * 32 + 1024 * 512; // 32 MB + 512KB
 };
 

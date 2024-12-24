@@ -39,12 +39,24 @@ bool FileTransferClient::UploadFile(
 		throw std::runtime_error("Failed to get file size.");
 	}
 
-	m_pb_manager->AddFile("Calculating checksum");
+	std::vector<uint8_t> checksum{};
 
-	// Calculate the checksum
-	std::vector<uint8_t> checksum = md5_handler->calcCheckSumFile(file_path.string());
+	if (!is_uploading_directory)
+	{
+		m_pb_manager->AddFile("Calculating checksum");
 
-	m_pb_manager->Cleanup();
+		// Calculate the checksum
+		checksum = md5_handler->calcCheckSumFile(file_path.string(), [this, &fileSize](size_t progress)
+			{
+				m_pb_manager->UpdateProgress("Calculating checksum", static_cast<float>(progress * 100.0f / fileSize));
+			});
+
+		m_pb_manager->Cleanup();
+	}
+	else
+	{
+		// Empty checksum for directory
+	}
 
 	// Prepare the upload request
 	PacketUploadRequest uploadReq(remote_path, "File", fileSize, checksum.data());
@@ -73,8 +85,11 @@ bool FileTransferClient::UploadFile(
 	}
 	else
 	{
-		std::cerr << "The server has denied the upload." << std::endl;
-		std::cerr << "Error message: " << uploadResp.out_of_space.message << std::endl;
+		if (!is_uploading_directory)
+		{
+			std::cerr << "The server has denied the upload." << std::endl;
+			std::cerr << "Error message: " << uploadResp.out_of_space.message << std::endl;
+		}
 		return false;
 	}
 
@@ -111,10 +126,16 @@ bool FileTransferClient::UploadFile(
 			throw std::runtime_error("Chunk ACK validation failed for zero-sized file.");
 		}
 
+		if (!is_uploading_directory)
+		{
+			std::cout << "File uploaded successfully : " << remote_path << std::endl;
+		}
+
 		return true;
 	}
 
 	const std::string file_ckp = file_path.stem().string() + ".ckp"; // Checkpoint file
+	std::ofstream state_file(file_ckp, std::ios::binary | std::ios::trunc);
 
 	// Upload the file
 	size_t chunk_size = uploadResp.upload_allowed.chunk_size;
@@ -163,10 +184,13 @@ bool FileTransferClient::UploadFile(
 				}
 
 				// Caclulate the checksum
-				std::vector<uint8_t> checksum;
+				std::vector<uint8_t> checksum{};
 				if (CHECKSUM_FLAG)
 				{
-					checksum = md5_handler->calcCheckSum(chunk_data);
+					if (!is_uploading_directory)
+					{
+						checksum = md5_handler->calcCheckSum(chunk_data);
+					}
 				}
 
 				// Prepare the file chunk packet
@@ -222,10 +246,11 @@ bool FileTransferClient::UploadFile(
 				m_pb_manager->UpdateProgress(file_path.filename().string(), progress);
 
 				// Lưu trạng thái upload 
-				std::ofstream state_file(file_ckp, std::ios::binary | std::ios::trunc);
+				// (file_id, chunk_size, chunk_index)
+				state_file.seekp(0);
 				state_file.write(reinterpret_cast<const char*>(&uploadResp.upload_allowed.file_id), sizeof(uploadResp.upload_allowed.file_id));
 				state_file.write(reinterpret_cast<const char*>(&chunk_size), sizeof(chunk_size));
-				state_file.close();
+				state_file.write(reinterpret_cast<const char*>(&i), sizeof(i));
 			}
 			catch (const std::exception& e)
 			{
@@ -255,6 +280,7 @@ bool FileTransferClient::UploadFile(
 	// Đóng checkpoint file
 	if (fs::exists(file_ckp))
 	{
+		state_file.close();
 		fs::remove(file_ckp);
 	}
 
@@ -437,7 +463,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	return true;
 }
 
-bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_files)
+std::vector<FileTransferClient::FileEntry> FileTransferClient::ScanDirectory(const fs::path& dir_path, size_t total_files)
 {
 	// Quét thư mục và lưu các file vào danh sách file entries
 	std::vector<FileEntry> fileEntries;
@@ -446,8 +472,7 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 	// Kiểm tra xem thư mục có tồn tại không
 	if (!fs::exists(dir_path) || !fs::is_directory(dir_path))
 	{
-		std::cerr << "Directory does not exist or is not a valid directory: " << dir_path << std::endl;
-		return false;
+		throw std::runtime_error("Directory does not exist or is not a valid directory: " + dir_path.string());
 	}
 
 	// Quét tất cả các file trong thư mục
@@ -459,8 +484,7 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 	{
 		if (ec) // Nếu gặp lỗi trong quá trình quét thư mục
 		{
-			std::cerr << "Error scanning directory: " << ec.message() << std::endl;
-			return false;
+			throw std::runtime_error("Error scanning directory: " + ec.message());
 		}
 
 		if (fs::is_regular_file(entry)) // Kiểm tra nếu là file
@@ -469,10 +493,6 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 			file_entry.relative_path = fs::relative(entry.path(), dir_path.parent_path()).string();
 			file_entry.file_name = entry.path().filename().string();
 			file_entry.file_size = fs::file_size(entry);
-
-			std::vector<uint8_t> checksum = md5_handler->calcCheckSumFile(file_entry.absolute_path);
-
-			memcpy(file_entry.checksum, checksum.data(), 16);
 
 			fileEntries.emplace_back(file_entry);
 		}
@@ -489,30 +509,211 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 	// Đảm bảo có file trong thư mục
 	if (fileEntries.empty())
 	{
-		std::cerr << "No files found in the directory." << std::endl;
+		throw std::runtime_error("No files found in the directory.");
+	}
+
+	// Sắp xếp file theo kích thước giảm dần
+	std::stable_sort(fileEntries.begin(), fileEntries.end(),
+		[](const FileEntry& a, const FileEntry& b) {
+			return a.file_size > b.file_size;
+		});
+
+	return fileEntries;
+}
+
+bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_files)
+{
+	// Quét thư mục và lưu các file vào danh sách file entries
+	std::vector<FileEntry> fileEntries;
+	try
+	{
+		fileEntries = ScanDirectory(dir_path, total_files);
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "Failed to scan directory: " << e.what() << std::endl;
 		return false;
 	}
 
-	// Sắp xếp file theo kích thước tăng dần
-	std::stable_sort(fileEntries.begin(), fileEntries.end(),
-		[](const FileEntry& a, const FileEntry& b) {
-			return a.file_size < b.file_size;
-		});
-
 	is_uploading_directory = true;
 
-	m_pb_manager->ShowTotalProgress(true);
+	std::vector<std::string> failed_files;
 
+	m_pb_manager->ShowTotalProgress(true, total_files);
+	size_t current_file_count = 0;
+
+	// Upload từng file trong danh sách
 	for (const auto& fileEntry : fileEntries)
 	{
 		if (!UploadFile(fileEntry.absolute_path, fileEntry.relative_path))
 		{
-			std::cerr << "Failed to upload file: " << fileEntry.relative_path << std::endl;
-			continue;
+			failed_files.push_back(fileEntry.relative_path);
+		}
+
+		// Cập nhật tiến trình tổng
+		m_pb_manager->UpdateTotalProgress(++current_file_count);
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Delay 200ms
+	}
+
+	is_uploading_directory = false;
+
+	if (!failed_files.empty())
+	{
+		std::cerr << "\n\nFailed to upload the following files:" << std::endl;
+
+		for (const auto& file : failed_files)
+		{
+			std::cerr << file << std::endl;
+		}
+
+		return false;
+	}
+
+	return true;
+}
+
+bool FileTransferClient::UploadDirectoryParallel(const fs::path& dir_path, size_t total_files)
+{
+	// Quét thư mục và lưu các file vào danh sách file entries
+	std::vector<FileEntry> fileEntries;
+	try
+	{
+		fileEntries = ScanDirectory(dir_path, total_files);
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "Failed to scan directory: " << e.what() << std::endl;
+		return false;
+	}
+
+	const auto& server_info = m_connection->GetServerInfo();
+	const auto& credential_info = m_session_manager->GetUserCredential();
+
+	is_uploading_directory = true;
+	const size_t num_clients = 4;
+
+	// Distribute files evenly among clients
+	std::vector<std::vector<FileEntry>> clientFileEntries(num_clients);
+
+	size_t filesPerClient = fileEntries.size() / 4;
+	size_t remainingFiles = fileEntries.size() % 4;
+	size_t startIndex = 0;
+
+	for (size_t i = 0; i < num_clients; ++i)
+	{
+		size_t endIndex = startIndex + filesPerClient;
+		if (remainingFiles > 0)
+		{
+			++endIndex;
+			--remainingFiles;
+		}
+		clientFileEntries[i].assign(fileEntries.begin() + startIndex, fileEntries.begin() + endIndex);
+		startIndex = endIndex;
+	}
+
+	is_uploading_directory = true;
+
+	std::vector<std::string> failed_files;
+	std::mutex failed_files_mutex;
+
+	auto start_time = std::chrono::steady_clock::now();
+
+	// Start the threads
+	std::vector<std::thread> threads;
+	for (size_t i = 0; i < num_clients; ++i)
+	{
+		std::thread t(
+			[this, i, &failed_files, &failed_files_mutex, &clientFileEntries, &server_info, &credential_info]()
+			{
+				try
+				{
+					std::unique_ptr<FileTransferClient> client = std::make_unique<FileTransferClient>();
+
+					client->GetConnection().Disconnect();
+
+					std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Delay 100ms
+
+					client->GetSessionManager().ResetSession();
+
+					client->GetConnection().Connect(server_info.first, server_info.second);
+
+					std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Delay 100ms
+
+					if (!client->GetConnection().IsConnected())
+					{
+						throw std::runtime_error("Failed to connect to the server.");
+					}
+
+					if (!client->GetSessionManager().PerformHandshake())
+					{
+						throw std::runtime_error("Failed to perform handshake.");
+					}
+
+					std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Delay 1000ms
+
+					if (!client->GetSessionManager().PerformAuthentication(credential_info.first, credential_info.second))
+					{
+						throw std::runtime_error("Failed to authenticate.");
+					}
+
+					std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Delay 1000ms
+
+					system("cls");
+
+					for (const auto& fileEntry : clientFileEntries[i])
+					{
+						if (!client->UploadFile(fileEntry.absolute_path, fileEntry.relative_path))
+						{
+							std::unique_lock<std::mutex> lock(failed_files_mutex);
+							failed_files.push_back(fileEntry.relative_path);
+						}
+
+						std::this_thread::sleep_for(std::chrono::milliseconds(250)); // Delay 250ms
+					}
+
+					std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Delay 1000ms
+
+					client->CloseSession();
+
+					client->GetSessionManager().ResetSession();
+
+					client->GetConnection().Disconnect();
+				}
+				catch (const std::exception& e)
+				{
+					std::cerr << "Thread " << i << " failed: " << e.what() << std::endl;
+				}
+			});
+
+		threads.push_back(std::move(t));
+	}
+
+	for (auto& t : threads)
+	{
+		if (t.joinable())
+		{
+			t.join();
 		}
 	}
 
 	is_uploading_directory = false;
+
+	auto end_time = std::chrono::steady_clock::now();
+
+	if (!failed_files.empty())
+	{
+		std::cerr << "\n\nFailed to upload the following files:" << std::endl;
+		for (const auto& file : failed_files)
+		{
+			std::cerr << "- " << file << std::endl;
+		}
+		return false;
+	}
+
+	std::chrono::duration<double> total_duration = end_time - start_time;
+
+	std::cout << "\n\nTotal time: " << std::fixed << std::setprecision(2) << total_duration.count() << " seconds" << std::endl;
 
 	return true;
 }
@@ -732,11 +933,11 @@ bool FileTransferClient::ResumeUpload(const fs::path& file_path)
 	std::chrono::duration<double> total_duration = end_time - start_time;
 
 	std::cout << std::endl
-			<< "File uploaded successfully : " << file_path.filename().string() << std::endl;
+		<< "File uploaded successfully : " << file_path.filename().string() << std::endl;
 	std::cout << "Total time: " << std::fixed << std::setprecision(2) << total_duration.count() << " seconds" << std::endl;
 	double avg_speed = (total_sent * 8.0) / (total_duration.count() * 1000000.0); // Mbps
 	std::cout << "Average speed: " << std::fixed << std::setprecision(2) << avg_speed << " Mbps" << std::endl;
-	
+
 	return true;
 }
 
@@ -749,13 +950,9 @@ void FileTransferClient::CloseSession()
 		throw std::runtime_error("Failed to send close session request.");
 	}
 
-	std::cout << "Session closed successfully." << std::endl;
-
 	m_pb_manager->Cleanup();
 
 	m_connection->Disconnect();
 
 	m_session_manager->ResetSession();
-
-	std::cout << "Connection closed." << std::endl;
 }

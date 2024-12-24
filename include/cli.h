@@ -13,6 +13,7 @@
 #include <ShObjIdl.h>
 #include <Windows.h>
 #include <filesystem>
+#include <file_transfer_client.h>
 using namespace std;
 namespace fs = std::filesystem;
 
@@ -172,6 +173,8 @@ namespace cli
 			cout << "===============================================\n";
 			cout << "Thank you for using the File Transfer Application!\n";
 			cout << "Exiting application...\n";
+
+			exit(0);
 		}
 
 		int showTransferMenu()
@@ -342,10 +345,14 @@ namespace cli
 				wcout << L"File type: " << fileType << L"\n";
 				wcout << L"File size: " << fileSize << L" bytes (" << (fileSize / 1024) << L" KB)\n";
 
-				
+
 				if (!confirmAction("Do you want to upload this file?"))
 				{
+					state = CLIState::SESSION;
+
 					showTransferMenu(); // Return to transfer menu
+
+					return;
 				}
 
 				system("cls"); // Clear screen
@@ -515,19 +522,50 @@ namespace cli
 					showTransferMenu(); // Return to transfer menu
 				}
 
+				cout << "Which type of folder upload do you want to use?\n";
+				cout << "1. Sequential upload\n";
+				cout << "2. Parallel upload\n";
+
+				int choice = 0;
+				cout << "Enter your choice: ";
+				cin >> choice;
+				cin.ignore((numeric_limits<streamsize>::max)(), '\n');
+
+				if (choice < 1 || choice > 2)
+				{
+					cout << "Invalid choice. Please try again.\n";
+					waitForEnter();
+					return showUploadFolder(client);
+				}
+
 				system("cls"); // Clear screen
 
 				cout << "\n===============================================\n";
 				cout << "> Uploading folder...\n\n";
 
-				// Upload folder
-				if (client->UploadDirectory(folderPath, totalItems))
+				if (choice == 1)
 				{
-					cout << "\nFolder uploaded successfully.\n";
+					// Upload folder
+					if (client->UploadDirectory(folderPath, totalItems))
+					{
+						cout << "\nFolder uploaded successfully.\n";
+					}
+					else
+					{
+						cerr << "Failed to upload folder.\n";
+					}
 				}
-				else
+				else if (choice == 2)
 				{
-					cerr << "Failed to upload folder.\n";
+					// Upload folder
+					if (client->UploadDirectoryParallel(folderPath, totalItems))
+					{
+						cout << "\nFolder uploaded successfully.\n";
+					}
+					else
+					{
+						cerr << "Failed to upload folder.\n";
+					}
 				}
 			}
 			catch (const std::exception& e)
@@ -596,7 +634,7 @@ namespace cli
 			state = CLIState::SESSION;
 		}
 
-		void showResume(FileTransferClient* client) 
+		void showResume(FileTransferClient* client)
 		{
 			if (!client || state != CLIState::RESUME)
 			{

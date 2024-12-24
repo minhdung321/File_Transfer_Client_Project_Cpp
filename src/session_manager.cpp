@@ -92,11 +92,6 @@ bool SessionManager::PerformAuthentication(const std::string& username, const st
 
 bool SessionManager::PerformReconnect()
 {
-	if (m_session_id[0] == 0 && m_session_id[1] == 0 && m_session_id[2] == 0 && m_session_id[3] == 0)
-	{
-		throw std::runtime_error("Invalid session ID for reconnection.");
-	}
-
 	if (m_username.empty() || m_password.empty())
 	{
 		throw std::runtime_error("Invalid username or password for reconnection.");
@@ -138,6 +133,17 @@ void SessionManager::SetSessionID(const uint8_t* new_session_id)
 	{
 		std::copy(new_session_id, new_session_id + 16, m_session_id.begin());
 	}
+}
+
+std::pair<std::string, std::string> SessionManager::GetUserCredential() const
+{
+	return std::make_pair(m_username, m_password);
+}
+
+void SessionManager::SetUserCredential(const std::string& username, const std::string& password)
+{
+	m_username = username;
+	m_password = password;
 }
 
 
