@@ -712,20 +712,26 @@ namespace cli
 							uint64_t resume_position_read;
 							uint32_t last_chunk_index_read;
 							uint64_t file_size;
+							size_t len;
 
 							/*fs::path path(file_name);
 							std::string namePart = path.stem().string();
 							std::string check_point_path = utils::DEFAULT_CHECK_POINT_PATH + namePart + ".ckp";*/
 
-							std::ifstream resume_in(entry.path().filename().string(), std::ios::binary);
+							std::ifstream resume_in(entry.path(), std::ios::binary);
 							// Repair info resuming transfer
 							if (resume_in.is_open())
 							{
-								resume_in.read(reinterpret_cast<char*>(&file_name), sizeof(file_name));
+								resume_in.read(reinterpret_cast<char*>(&len), sizeof(len));
+								resume_in.read(reinterpret_cast<char*>(file_name.data()), sizeof(char) * len);
+								resume_in.read(reinterpret_cast<char*>(&file_id_read), sizeof(file_id_read));
+								resume_in.read(reinterpret_cast<char*>(&resume_position_read), sizeof(resume_position_read));
+								resume_in.read(reinterpret_cast<char*>(&last_chunk_index_read), sizeof(last_chunk_index_read));
+								resume_in.read(reinterpret_cast<char*>(&file_size), sizeof(file_size));
 							}
 							resume_in.close();
 
-							std::cout << ++i << ". " << file_name << '\n';
+							std::cout << ++i << ". " << file_name.data() << '\n';
 						}
 					}
 
@@ -739,7 +745,7 @@ namespace cli
 					std::cin >> choice;
 					cin.ignore();
 
-					if (choice >= 0 && choice < static_cast<int>(files.size()))
+					if (choice >= 0 && choice <= static_cast<int>(files.size()))
 					{
 						if (!confirmAction("Do you want to resume download this file?"))
 						{
@@ -747,11 +753,22 @@ namespace cli
 						}
 
 						std::string resume_file_name;
-						std::ifstream resume_in(files[choice - 1].filename().string(), std::ios::binary);
+						uint32_t file_id_read;
+						uint64_t resume_position_read;
+						uint32_t last_chunk_index_read;
+						uint64_t file_size;
+						size_t len;
+
+						std::ifstream resume_in("./checkpoint/" + files[choice - 1].filename().string(), std::ios::binary);
 						// Get the file name
 						if (resume_in.is_open())
 						{
-							resume_in.read(reinterpret_cast<char*>(&resume_file_name), sizeof(resume_file_name));
+							resume_in.read(reinterpret_cast<char*>(&len), sizeof(len));
+							resume_in.read(reinterpret_cast<char*>(resume_file_name.data()), sizeof(char) * len);
+							resume_in.read(reinterpret_cast<char*>(&file_id_read), sizeof(file_id_read));
+							resume_in.read(reinterpret_cast<char*>(&resume_position_read), sizeof(resume_position_read));
+							resume_in.read(reinterpret_cast<char*>(&last_chunk_index_read), sizeof(last_chunk_index_read));
+							resume_in.read(reinterpret_cast<char*>(&file_size), sizeof(file_size));
 						}
 						resume_in.close();
 

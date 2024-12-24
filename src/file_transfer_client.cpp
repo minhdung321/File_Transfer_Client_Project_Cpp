@@ -9,6 +9,7 @@ using namespace utils;
 #include <future>
 #include <thread>
 #include <chrono>
+#include <sstream>
 namespace fs = std::filesystem;
 
 
@@ -381,7 +382,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 		std::cout << "Cannot open file to write." << std::endl;
 		return false;
 	}
-
+	std::ofstream resume_out(check_point_path, std::ios::binary);
 	while (total_received < file_size)
 	{
 		PacketHeader header;
@@ -431,13 +432,14 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 			total_received += fileChunk.chunk_size;
 			
 			// Save info for resuming transfer
-			std::ofstream resume_out(check_point_path, std::ios::binary);
-			resume_out.write(reinterpret_cast<const char*>(&new_file_name), sizeof(new_file_name));
+			size_t len = new_file_name.length();
+			resume_out.seekp(0);
+			resume_out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+			resume_out.write(reinterpret_cast<const char*>(new_file_name.data()), sizeof(char) * len);
 			resume_out.write(reinterpret_cast<const char*>(&p_response.file_info.file_id), sizeof(p_response.file_info.file_id));
 			resume_out.write(reinterpret_cast<const char*>(&total_received), sizeof(total_received));
 			resume_out.write(reinterpret_cast<const char*>(&fileChunk.chunk_index), sizeof(fileChunk.chunk_index));
 			resume_out.write(reinterpret_cast<const char*>(&file_size), sizeof(file_size));
-			resume_out.close();
 
 			// Calculate download speed
 			auto current_time = std::chrono::steady_clock::now();
@@ -476,6 +478,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 		}
 	}
 
+	resume_out.close();
 	file.close();
 
 	// Validate checksum
@@ -510,8 +513,11 @@ bool  FileTransferClient::ResumeDownload(const std::string& file_name)
 	uint32_t last_chunk_index_read;
 	uint64_t file_size;
 	std::string temp;
-
-	fs::path path(file_name);
+	size_t len;
+	
+	std::stringstream ss(file_name);
+	
+	fs::path path(file_name.data());
 	std::string namePart = path.stem().string();
 	std::string check_point_path = utils::DEFAULT_CHECK_POINT_PATH + namePart + ".ckp";
 	std::ifstream resume_in(check_point_path, std::ios::binary);
@@ -519,17 +525,12 @@ bool  FileTransferClient::ResumeDownload(const std::string& file_name)
 	// Repair info resuming transfer
 	if (resume_in.is_open())
 	{
-		resume_in.read(reinterpret_cast<char*>(&temp), sizeof(temp));
+		resume_in.read(reinterpret_cast<char*>(&len), sizeof(len));
+		resume_in.read(reinterpret_cast<char*>(temp.data()), sizeof(char) * len);
 		resume_in.read(reinterpret_cast<char*>(&file_id_read), sizeof(file_id_read));
 		resume_in.read(reinterpret_cast<char*>(&resume_position_read), sizeof(resume_position_read));
 		resume_in.read(reinterpret_cast<char*>(&last_chunk_index_read), sizeof(last_chunk_index_read));
 		resume_in.read(reinterpret_cast<char*>(&file_size), sizeof(file_size));
-		resume_in.close();
-
-		std::cout << "Resume state saved: " << std::endl;
-		std::cout << "File ID: " << file_id_read << std::endl;
-		std::cout << "Resume Position: " << resume_position_read << " bytes" << std::endl;
-		std::cout << "Last Chunk Index: " << last_chunk_index_read << std::endl;
 	}
 	resume_in.close();
 
@@ -581,6 +582,7 @@ bool  FileTransferClient::ResumeDownload(const std::string& file_name)
 		std::cout << "Cannot open file to write." << std::endl;
 		return false;
 	}
+	std::ofstream resume_out(check_point_path, std::ios::binary);
 
 	while (p_response.resume_allowed.remaining_chunk_count-- > 0)
 	{
@@ -630,13 +632,13 @@ bool  FileTransferClient::ResumeDownload(const std::string& file_name)
 
 			total_received += fileChunk.chunk_size;
 
-			std::ofstream resume_out(check_point_path, std::ios::binary);
-			resume_out.write(reinterpret_cast<const char*>(&temp), sizeof(temp));
+			resume_out.seekp(0);
+			resume_out.write(reinterpret_cast<const char*>(&len), sizeof(len));
+			resume_out.write(reinterpret_cast<const char*>(temp.data()), sizeof(char) * len);
 			resume_out.write(reinterpret_cast<const char*>(&p_response.resume_allowed.file_id), sizeof(p_response.resume_allowed.file_id));
 			resume_out.write(reinterpret_cast<const char*>(&total_received), sizeof(total_received));
 			resume_out.write(reinterpret_cast<const char*>(&fileChunk.chunk_index), sizeof(fileChunk.chunk_index));
 			resume_out.write(reinterpret_cast<const char*>(&file_size), sizeof(file_size));
-			resume_out.close();
 
 			// Calculate download speed
 			auto current_time = std::chrono::steady_clock::now();
@@ -675,7 +677,7 @@ bool  FileTransferClient::ResumeDownload(const std::string& file_name)
 			std::this_thread::sleep_for(std::chrono::milliseconds(500));
 		}
 	}
-
+	resume_out.close();
 	file.close();
 
 	// Validate checksum
