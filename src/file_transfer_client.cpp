@@ -281,6 +281,8 @@ bool FileTransferClient::UploadFile(
 		}
 	}
 
+	m_pb_manager->UpdateProgress(file_path.filename().string(), 100.0f);
+
 	// Đóng checkpoint file
 	if (fs::exists(file_ckp))
 	{
@@ -325,7 +327,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	// Create check point file
 	pathResolver.CreateFileWithName(check_point_path);
 
-	
+
 	// Prepare the download request
 	PacketDownloadRequest p_request(file_name);
 
@@ -403,7 +405,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 		bool checksum_valid = true;
 		if (CHECKSUM_FLAG)
 		{
-			std::vector<uint8_t> chunk_checksum = md5_handler->calcCheckSum(fileChunk.data);
+			const std::vector<uint8_t>& chunk_checksum = md5_handler->calcCheckSum(fileChunk.data);
 
 			if (memcmp(chunk_checksum.data(), fileChunk.checksum, 16) != 0)
 			{
@@ -430,7 +432,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 			file.flush();
 
 			total_received += fileChunk.chunk_size;
-			
+
 			// Save info for resuming transfer
 			size_t len = new_file_name.length();
 			resume_out.seekp(0);
@@ -484,7 +486,7 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 	// Validate checksum
 	if (CHECKSUM_FLAG)
 	{
-		std::vector<uint8_t> file_checksum = md5_handler->calcCheckSumFile(new_file_name);
+		const std::vector<uint8_t>& file_checksum = md5_handler->calcCheckSumFile(new_file_name);
 		if (memcmp(file_checksum.data(), checksum.data(), 16) != 0)
 		{
 			std::cerr << "Checksum mismatch in the downloaded file." << std::endl;
@@ -508,20 +510,20 @@ bool FileTransferClient::DownloadFile(const std::string& file_name)
 bool  FileTransferClient::ResumeDownload(const std::string& file_name)
 {
 	PathResolver pathResolver;
-	uint32_t file_id_read;
-	uint64_t resume_position_read;
-	uint32_t last_chunk_index_read;
-	uint64_t file_size;
+	uint32_t file_id_read{};
+	uint64_t resume_position_read{};
+	uint32_t last_chunk_index_read{};
+	uint64_t file_size{};
 	std::string temp;
-	size_t len;
-	
+	size_t len{};
+
 	std::stringstream ss(file_name);
-	
+
 	fs::path path(file_name.data());
 	std::string namePart = path.stem().string();
 	std::string check_point_path = utils::DEFAULT_CHECK_POINT_PATH + namePart + ".ckp";
 	std::ifstream resume_in(check_point_path, std::ios::binary);
-	
+
 	// Repair info resuming transfer
 	if (resume_in.is_open())
 	{
@@ -794,8 +796,10 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 		// Cập nhật tiến trình tổng
 		m_pb_manager->UpdateTotalProgress(++current_file_count);
 
-		std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Delay 200ms
+		std::this_thread::sleep_for(std::chrono::milliseconds(150)); // Delay 150ms
 	}
+
+	m_pb_manager->UpdateTotalProgress(total_files);
 
 	is_uploading_directory = false;
 
@@ -807,8 +811,6 @@ bool FileTransferClient::UploadDirectory(const fs::path& dir_path, size_t total_
 		{
 			std::cerr << file << std::endl;
 		}
-
-		return false;
 	}
 
 	return true;
@@ -891,14 +893,14 @@ bool FileTransferClient::UploadDirectoryParallel(const fs::path& dir_path, size_
 						throw std::runtime_error("Failed to perform handshake.");
 					}
 
-					std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Delay 1000ms
+					std::this_thread::sleep_for(std::chrono::milliseconds(500)); // Delay 500ms
 
 					if (!client->GetSessionManager().PerformAuthentication(credential_info.first, credential_info.second))
 					{
 						throw std::runtime_error("Failed to authenticate.");
 					}
 
-					std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Delay 1000ms
+					std::this_thread::sleep_for(std::chrono::milliseconds(500)); // Delay 500ms
 
 					system("cls");
 
@@ -910,10 +912,10 @@ bool FileTransferClient::UploadDirectoryParallel(const fs::path& dir_path, size_
 							failed_files.push_back(fileEntry.relative_path);
 						}
 
-						std::this_thread::sleep_for(std::chrono::milliseconds(250)); // Delay 250ms
+						std::this_thread::sleep_for(std::chrono::milliseconds(150)); // Delay 150ms
 					}
 
-					std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Delay 1000ms
+					std::this_thread::sleep_for(std::chrono::milliseconds(500)); // Delay 1000ms
 
 					client->CloseSession();
 
@@ -945,11 +947,11 @@ bool FileTransferClient::UploadDirectoryParallel(const fs::path& dir_path, size_
 	if (!failed_files.empty())
 	{
 		std::cerr << "\n\nFailed to upload the following files:" << std::endl;
+
 		for (const auto& file : failed_files)
 		{
 			std::cerr << "- " << file << std::endl;
 		}
-		return false;
 	}
 
 	std::chrono::duration<double> total_duration = end_time - start_time;

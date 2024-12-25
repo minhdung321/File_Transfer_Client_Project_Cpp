@@ -1,5 +1,4 @@
-﻿#include "path_resolver.h"
-
+﻿#include <path_resolver.h>
 
 utils::PathResolver::~PathResolver()
 {
@@ -30,7 +29,7 @@ bool utils::PathResolver::CreateCheckPointDirectory()
 	}
 	else
 	{
-		
+
 		return false;
 	}
 }

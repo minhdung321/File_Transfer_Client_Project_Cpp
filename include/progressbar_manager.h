@@ -11,8 +11,8 @@
 
 struct FileProgress
 {
-	std::string file_name;
-	float progress;
+	std::string file_name = "";
+	float progress = 0.0f;
 };
 
 class ProgressBarManager

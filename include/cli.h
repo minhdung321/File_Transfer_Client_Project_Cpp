@@ -753,11 +753,11 @@ namespace cli
 						}
 
 						std::string resume_file_name;
-						uint32_t file_id_read;
-						uint64_t resume_position_read;
-						uint32_t last_chunk_index_read;
-						uint64_t file_size;
-						size_t len;
+						uint32_t file_id_read{};
+						uint64_t resume_position_read{};
+						uint32_t last_chunk_index_read{};
+						uint64_t file_size{};
+						size_t len{};
 
 						std::ifstream resume_in("./checkpoint/" + files[choice - 1].filename().string(), std::ios::binary);
 						// Get the file name
@@ -786,23 +786,23 @@ namespace cli
 						std::cerr << "Invalid option.\n";
 					}
 				}
-				else 
+				else
 				{
 					std::cerr << "Invalid directory.\n";
 				}
 			}
 			catch (const fs::filesystem_error& e) {
-				std::cerr << "Lỗi: " << e.what() << '\n';
+				std::cerr << "Error: " << e.what() << '\n';
 			}
 
-			
+
 
 			waitForEnter();
 
 			state = CLIState::SESSION;
 		}
 
-		void showResume(FileTransferClient* client) 
+		void showResume(FileTransferClient* client)
 		{
 			if (!client || state != CLIState::RESUME)
 			{
@@ -843,7 +843,7 @@ namespace cli
 				break;
 			case 2:
 				state = CLIState::RESUME;
-				showResumeDownload(client); 
+				showResumeDownload(client);
 				state = CLIState::SESSION;
 				break;
 			case 3:
